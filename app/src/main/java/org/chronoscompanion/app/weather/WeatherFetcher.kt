@@ -29,6 +29,41 @@ object WeatherFetcher {
         val hourly: List<ChronosProtocol.HourlyData> // today's 24 hours, index = hour of day
     )
 
+    private const val PREFS_NAME = "weather_prefs"
+    private const val KEY_LAST_LAT = "last_lat"
+    private const val KEY_LAST_LON = "last_lon"
+
+    /**
+     * Best effort location, in descending order of freshness:
+     *   1. Android's cached last-known fix.
+     *   2. An actively requested one-shot fix (blocking, so call from a worker thread).
+     *   3. The last coordinates we ever successfully used, remembered on disk.
+     *
+     * Step 2 exists because step 1 alone is not reliable: this app never asked for a
+     * position, it only read whatever some other app happened to leave cached, and
+     * Android refuses to hand back fixes that have gone stale. On a phone where nothing
+     * else requested location for a few days, getLastKnownLocation() returned null and
+     * weather silently stopped working entirely ("sendWeather: no last known location
+     * available"). Step 3 then guarantees that a temporary failure never leaves the watch
+     * with no weather at all - yesterday's city is far better than nothing.
+     */
+    fun resolveLocation(context: Context): Location? {
+        getLastLocation(context)?.let {
+            rememberLocation(context, it)
+            return it
+        }
+        Log.i(TAG, "No cached location, requesting a fresh fix")
+        requestSingleFix(context)?.let {
+            rememberLocation(context, it)
+            return it
+        }
+        val remembered = rememberedLocation(context)
+        if (remembered != null) {
+            Log.w(TAG, "Falling back to the last location we used")
+        }
+        return remembered
+    }
+
     @SuppressLint("MissingPermission")
     fun getLastLocation(context: Context): Location? {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -44,6 +79,91 @@ object WeatherFetcher {
             }
         }
         return null
+    }
+
+    /**
+     * Asks for one position and waits up to [timeoutMs] for it. BLOCKS - only call from a
+     * background thread (sendWeather already runs on one). NETWORK first: it works
+     * indoors, resolves in seconds and is satisfied by ACCESS_COARSE_LOCATION, which is
+     * the only location permission this app holds on modern Android.
+     */
+    @SuppressLint("MissingPermission")
+    private fun requestSingleFix(context: Context, timeoutMs: Long = 25000): Location? {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .filter {
+                try {
+                    lm.isProviderEnabled(it)
+                } catch (e: Exception) {
+                    false
+                }
+            }
+        if (providers.isEmpty()) {
+            Log.w(TAG, "No location provider is enabled")
+            return null
+        }
+
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val found = java.util.concurrent.atomic.AtomicReference<Location?>(null)
+        // Explicit object rather than a lambda: onStatusChanged and friends only gained
+        // default implementations in newer API levels, and this app's minSdk is 26.
+        val listener = object : android.location.LocationListener {
+            override fun onLocationChanged(location: Location) {
+                found.set(location)
+                latch.countDown()
+            }
+
+            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+
+        val looper = android.os.Looper.getMainLooper()
+        val handler = android.os.Handler(looper)
+        handler.post {
+            providers.forEach { p ->
+                try {
+                    lm.requestLocationUpdates(p, 0L, 0f, listener, looper)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Not allowed to request updates from $p")
+                } catch (e: IllegalArgumentException) {
+                    // provider vanished between the check above and here
+                }
+            }
+        }
+
+        val got = try {
+            latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            false
+        }
+        handler.post {
+            try {
+                lm.removeUpdates(listener)
+            } catch (e: SecurityException) {
+                // nothing to clean up
+            }
+        }
+        if (!got) {
+            Log.w(TAG, "Timed out waiting for a location fix")
+        }
+        return found.get()
+    }
+
+    private fun rememberLocation(context: Context, location: Location) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putFloat(KEY_LAST_LAT, location.latitude.toFloat())
+            .putFloat(KEY_LAST_LON, location.longitude.toFloat())
+            .apply()
+    }
+
+    private fun rememberedLocation(context: Context): Location? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.contains(KEY_LAST_LAT)) return null
+        return Location("remembered").apply {
+            latitude = prefs.getFloat(KEY_LAST_LAT, 0f).toDouble()
+            longitude = prefs.getFloat(KEY_LAST_LON, 0f).toDouble()
+        }
     }
 
     private fun cityName(context: Context, location: Location): String {

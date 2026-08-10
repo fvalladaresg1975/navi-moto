@@ -18,10 +18,17 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.telecom.TelecomManager
+import android.telephony.TelephonyManager
+import androidx.core.content.ContextCompat
 import android.media.AudioManager
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -34,9 +41,15 @@ import android.os.ParcelUuid
 import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
+import android.widget.Toast
+import org.chronoscompanion.app.R
 import java.util.ArrayDeque
 import java.util.UUID
 import org.chronoscompanion.app.notification.ChronosNotificationListener
+import android.net.Uri
+import org.chronoscompanion.app.telephony.CallAlertsPrefs
+import org.chronoscompanion.app.telephony.CallerLookup
+import org.chronoscompanion.app.telephony.WatchContactsPrefs
 import org.chronoscompanion.app.weather.WeatherFetcher
 
 /**
@@ -90,11 +103,27 @@ class ChronosBleService : Service() {
     private var writeInFlight = false
     private var writeGeneration = 0
     private val mainHandler = Handler(Looper.getMainLooper())
+    // Wall-clock time (SystemClock.elapsedRealtime) of the last weather send that actually
+    // ran - lets startWeatherTimer() skip redundant sends on rapid reconnects (see there).
+    private var lastWeatherSendAtMs = 0L
+    // Last forecast actually fetched, so a reconnecting/rebooted watch can be repopulated
+    // from memory instead of waiting on (or paying for) another Open-Meteo request.
+    private var cachedWeather: WeatherFetcher.Result? = null
+    private var cachedWeatherAtMs = 0L
+    // Guards beginSession() so the descriptor callback and its fallback timer can't both
+    // kick off a second round of time sync / contacts / weather on one connection.
+    private var sessionStarted = false
+    // Whether weather has been pushed since the CURRENT connection came up. lastWeatherSendAtMs
+    // alone wasn't enough: it's stamped when the packets are queued, not when the watch
+    // actually receives them, so while BLE was silently broken every attempt still "counted"
+    // and then blocked the next one for 30 minutes - the watch's weather never refreshed.
+    private var weatherSentThisConnection = false
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        registerCallStateReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -113,6 +142,11 @@ class ChronosBleService : Service() {
         // BLE stack ran out of scan slots and stopped working entirely.
         if (status == Status.DISCONNECTED) {
             startScan()
+        } else {
+            // Already connected/scanning - nothing to restart, but the UI that just
+            // launched us is showing "iniciando…" and would otherwise sit there forever
+            // waiting for a state-change broadcast that will never come.
+            broadcastStatus()
         }
         return START_STICKY
     }
@@ -121,21 +155,34 @@ class ChronosBleService : Service() {
         stopTimeSyncTimer()
         stopWeatherTimer()
         stopScanIfRunning()
+        unregisterCallStateReceiver()
         bluetoothGatt?.close()
         bluetoothGatt = null
         instance = null
-        setStatus(Status.DISCONNECTED)
+        status = Status.DISCONNECTED
+        broadcastStatus()
+        // setStatus()'s updateNotification() re-posts the ongoing "Buscando el reloj…"
+        // notification, which is right for a live reconnect-retry but wrong here: the
+        // service is being torn down (e.g. the user tapped "Detener"), so re-posting it
+        // orphans an ongoing, un-dismissable notification that never goes away once the
+        // service is actually gone. stopForeground(STOP_FOREGROUND_REMOVE) is what
+        // actually clears it.
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun setStatus(s: Status) {
-        status = s
+    private fun broadcastStatus() {
         val i = Intent(ACTION_STATUS_CHANGED)
-        i.putExtra(EXTRA_STATUS, s.name)
+        i.putExtra(EXTRA_STATUS, status.name)
         i.putExtra(EXTRA_DEVICE_NAME, prefs().getString(PREF_DEVICE_NAME, null))
         sendBroadcast(i)
+    }
+
+    private fun setStatus(s: Status) {
+        status = s
+        broadcastStatus()
         updateNotification(s)
     }
 
@@ -303,6 +350,10 @@ class ChronosBleService : Service() {
     @SuppressLint("MissingPermission")
     private fun connect(device: BluetoothDevice) {
         setStatus(Status.CONNECTING)
+        // Defensive: the disconnect handler already closes+nulls bluetoothGatt before
+        // any rescan can reach here, but don't leak a native GATT client if some other
+        // path ever calls connect() while one is still held.
+        bluetoothGatt?.close()
         bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
@@ -315,9 +366,24 @@ class ChronosBleService : Service() {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.w(TAG, "GATT disconnected (status=$status)")
                 setStatus(Status.DISCONNECTED)
+                // close() releases this BluetoothGatt's underlying native client resource.
+                // Android caps how many of these can be open at once (~a handful) - the
+                // watch's Extreme Power Save mode disconnects and reconnects BLE every
+                // time the screen sleeps/wakes on battery, and without this the app was
+                // leaking one native GATT client per cycle (connect() below just
+                // overwrote the field with a new connectGatt() call, never releasing the
+                // old one). After enough cycles the stack ran out of slots, and only a
+                // full app restart (which tears down every leaked client at once) freed
+                // them - matching what was actually observed on-device.
+                gatt.close()
+                if (bluetoothGatt === gatt) {
+                    bluetoothGatt = null
+                }
                 rxCharacteristic = null
                 writeQueue.clear()
                 writeInFlight = false
+                weatherSentThisConnection = false
+                sessionStarted = false
                 stopTimeSyncTimer()
                 stopWeatherTimer()
                 mainHandler.postDelayed({ startScan() }, 3000)
@@ -334,12 +400,14 @@ class ChronosBleService : Service() {
             rxCharacteristic = service.getCharacteristic(ChronosProtocol.CHARACTERISTIC_UUID_RX)
             val txCharacteristic = service.getCharacteristic(ChronosProtocol.CHARACTERISTIC_UUID_TX)
 
+            var waitingForDescriptor = false
             if (txCharacteristic != null) {
                 gatt.setCharacteristicNotification(txCharacteristic, true)
                 val cccd = txCharacteristic.getDescriptor(
                     UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
                 )
                 if (cccd != null) {
+                    waitingForDescriptor = true
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                     } else {
@@ -353,9 +421,30 @@ class ChronosBleService : Service() {
 
             setStatus(Status.CONNECTED)
             Log.i(TAG, "Chronos UART service ready")
-            sendTimeSync()
-            startTimeSyncTimer()
-            startWeatherTimer()
+
+            // Android runs ONE GATT operation at a time. The descriptor write above is a
+            // GATT operation, so firing a characteristic write before it completes gets
+            // the write silently dropped - no callback, no error. That is exactly what
+            // happened on every single connection: the first packet (time sync) stalled
+            // for the full 5s write timeout and only went through on the retry. Wait for
+            // onDescriptorWrite instead, with a timer as a safety net in case some stack
+            // never delivers it.
+            if (waitingForDescriptor) {
+                mainHandler.postDelayed({ beginSession() }, 2000)
+            } else {
+                beginSession()
+            }
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.w(TAG, "Descriptor write failed (status=$status), sending anyway")
+            }
+            beginSession()
         }
 
         override fun onCharacteristicWrite(
@@ -380,7 +469,18 @@ class ChronosBleService : Service() {
         ) {
             Log.d(TAG, "TX notify: ${value.joinToString(" ") { "%02x".format(it) }}")
             ChronosProtocol.decodeWatchCommand(value)?.let { handleWatchCommand(it) }
+            ChronosProtocol.decodeDialContactIndex(value)?.let { dialContactAt(it) }
         }
+    }
+
+    /** Everything we push once a connection is genuinely ready to accept writes. */
+    private fun beginSession() {
+        if (sessionStarted) return
+        sessionStarted = true
+        sendTimeSync()
+        startTimeSyncTimer()
+        startWeatherTimer()
+        sendContacts()
     }
 
     // ---------------------------------------------------------------------
@@ -398,6 +498,8 @@ class ChronosBleService : Service() {
             ChronosProtocol.WatchCommand.VOLUME_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
             ChronosProtocol.WatchCommand.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             ChronosProtocol.WatchCommand.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
+            ChronosProtocol.WatchCommand.CALL_ACCEPT -> answerRingingCall()
+            ChronosProtocol.WatchCommand.CALL_REJECT -> declineRingingCall()
         }
     }
 
@@ -429,6 +531,178 @@ class ChronosBleService : Service() {
     private fun adjustVolume(direction: Int) {
         val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+    }
+
+    // ---------------------------------------------------------------------
+    // Incoming calls: mirror the caller onto the watch, and let its Accept/Reject
+    // buttons act on the call here. Entirely opt-in - CallAlertsPrefs defaults to off
+    // and the user turns it on from MainActivity's switch.
+    // ---------------------------------------------------------------------
+
+    private var lastRingingNumber: String? = null
+    // Set when the watch asked us to dial, so the IDLE broadcast knows to tell the watch
+    // to close its call screen even though no incoming call was ever announced.
+    private var watchInitiatedCall = false
+
+    /**
+     * Watches the phone's own call state. Uses the ACTION_PHONE_STATE_CHANGED broadcast
+     * rather than TelephonyCallback.CallStateListener because the latter only reports the
+     * state on API 31+, never the number - and the caller's identity is the whole point
+     * here. EXTRA_INCOMING_NUMBER still arrives on this broadcast when both
+     * READ_PHONE_STATE and READ_CALL_LOG are granted (see AndroidManifest's comment).
+     */
+    private val callStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
+
+            when (intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
+                TelephonyManager.EXTRA_STATE_RINGING -> {
+                    // Only the incoming-call popup is gated by the switch; a call the user
+                    // placed from the watch still has to be able to close its own screen.
+                    if (!CallAlertsPrefs.isEnabled(this@ChronosBleService)) return
+                    @Suppress("DEPRECATION")
+                    val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+                    // Android delivers this broadcast more than once per call (and
+                    // sometimes without the number on the first one) - only push to the
+                    // watch on a genuinely new ringing number, not on every repeat.
+                    if (number != null && number == lastRingingNumber) return
+                    lastRingingNumber = number
+                    val name = CallerLookup.nameFor(this@ChronosBleService, number)
+                    Log.i(TAG, "Incoming call, notifying watch")
+                    enqueuePacket(ChronosProtocol.buildRingerStart(name))
+                }
+                // An incoming call being answered means the watch should drop its
+                // incoming-call screen. A watch-placed call reaching OFFHOOK is the
+                // opposite: it just connected, and the screen must stay so it can be
+                // hung up from there.
+                TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                    if (lastRingingNumber == null) return
+                    lastRingingNumber = null
+                    enqueuePacket(ChronosProtocol.buildRingerStop())
+                }
+                // Call over - close whichever screen the watch is showing.
+                TelephonyManager.EXTRA_STATE_IDLE -> {
+                    if (lastRingingNumber == null && !watchInitiatedCall) return
+                    lastRingingNumber = null
+                    watchInitiatedCall = false
+                    enqueuePacket(ChronosProtocol.buildRingerStop())
+                }
+            }
+        }
+    }
+
+    private fun registerCallStateReceiver() {
+        val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(callStateReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(callStateReceiver, filter)
+        }
+    }
+
+    private fun unregisterCallStateReceiver() {
+        try {
+            unregisterReceiver(callStateReceiver)
+        } catch (e: IllegalArgumentException) {
+            // wasn't registered (service torn down before onCreate finished) - nothing to do
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Contacts on the watch
+    // ---------------------------------------------------------------------
+
+    /**
+     * Pushes the user's picked contacts (WatchContactsPrefs) to the watch's Contactos app.
+     * Order is significant: the watch reports back only the index of the row tapped, so
+     * this list's order is the contract between both sides. Names first, then numbers -
+     * the firmware fires its "contacts received" callback on the LAST number packet.
+     */
+    fun sendContacts() {
+        val contacts = WatchContactsPrefs.get(this)
+        enqueuePacket(ChronosProtocol.buildContactsHeader(contacts.size))
+        contacts.forEachIndexed { i, c -> enqueuePacket(ChronosProtocol.buildContactName(i, c.name)) }
+        contacts.forEachIndexed { i, c -> enqueuePacket(ChronosProtocol.buildContactNumber(i, c.number)) }
+        Log.i(TAG, "Sent ${contacts.size} contact(s) to the watch")
+    }
+
+    /** Places a call to the contact the watch tapped, identified by its index in the
+     * same list [sendContacts] pushed. */
+    private fun dialContactAt(index: Int) {
+        val contacts = WatchContactsPrefs.get(this)
+        val contact = contacts.getOrNull(index)
+        if (contact == null) {
+            // Can happen if the user changed the selection while the watch still showed
+            // the old list - it'll be back in sync on the next connect/save.
+            Log.w(TAG, "Watch asked to dial index $index but only ${contacts.size} contact(s) are synced")
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Tell the user instead of only logging it: this exact case (permission added
+            // to the app after the call switch was already on, so it was never requested)
+            // made tapping a contact do nothing at all, with no visible reason why.
+            Log.w(TAG, "Cannot dial: CALL_PHONE not granted")
+            toast(R.string.missing_call_permission)
+            return
+        }
+        Log.i(TAG, "Dialing contact at index $index on the watch's request")
+        watchInitiatedCall = true
+        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(contact.number)}")).apply {
+            // Started from a service, so it needs its own task.
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Dial refused: ${e.message}")
+        }
+    }
+
+    private fun hasAnswerPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ANSWER_PHONE_CALLS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /** Toasts must run on the main thread; watch commands arrive on a BLE callback one. */
+    private fun toast(msgRes: Int) {
+        mainHandler.post { Toast.makeText(this, msgRes, Toast.LENGTH_LONG).show() }
+    }
+
+    private fun answerRingingCall() {
+        if (!hasAnswerPermission()) {
+            Log.w(TAG, "Cannot answer: ANSWER_PHONE_CALLS not granted")
+            toast(R.string.missing_answer_permission)
+            return
+        }
+        val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+        try {
+            telecom.acceptRingingCall()
+        } catch (e: SecurityException) {
+            Log.e(TAG, "acceptRingingCall refused: ${e.message}")
+        }
+    }
+
+    private fun declineRingingCall() {
+        if (!hasAnswerPermission()) {
+            Log.w(TAG, "Cannot decline: ANSWER_PHONE_CALLS not granted")
+            toast(R.string.missing_answer_permission)
+            return
+        }
+        // endCall() is API 28+; there's no public equivalent on 26/27, so on those the
+        // watch's Reject button simply does nothing rather than failing loudly.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            Log.w(TAG, "Declining calls needs Android 9+")
+            return
+        }
+        val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+        try {
+            @Suppress("DEPRECATION")
+            telecom.endCall()
+        } catch (e: SecurityException) {
+            Log.e(TAG, "endCall refused: ${e.message}")
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -559,11 +833,27 @@ class ChronosBleService : Service() {
 
     /** Fetches from Open-Meteo on a background thread (network I/O), then sends the
      * resulting packets back on the main handler like every other BLE write. */
+    /**
+     * Fetches from Open-Meteo on a background thread, then hands the result to
+     * [pushWeather]. Reuses [cachedWeather] when it is still fresh, so a watch that just
+     * rebooted can be repopulated without paying for another network round trip.
+     */
     private fun sendWeather() {
+        val cached = cachedWeather
+        if (cached != null &&
+            SystemClock.elapsedRealtime() - cachedWeatherAtMs < WEATHER_REFRESH_INTERVAL_MS
+        ) {
+            Log.i(TAG, "Weather still fresh, resending cached data")
+            pushWeather(cached)
+            return
+        }
         Thread {
-            val location = WeatherFetcher.getLastLocation(this)
+            // resolveLocation() falls back through an active fix and then a remembered
+            // one; plain getLastLocation() returned null whenever no other app had asked
+            // for a position recently, which silently killed weather altogether.
+            val location = WeatherFetcher.resolveLocation(this)
             if (location == null) {
-                Log.w(TAG, "sendWeather: no last known location available")
+                Log.w(TAG, "sendWeather: could not determine a location")
                 return@Thread
             }
             val result = WeatherFetcher.fetch(this, location)
@@ -572,23 +862,57 @@ class ChronosBleService : Service() {
                 return@Thread
             }
             mainHandler.post {
-                Log.i(TAG, "Sending weather: ${result.city}, today ${result.days.firstOrNull()?.temp}°")
-                enqueuePacket(ChronosProtocol.buildWeatherDaily(result.days))
-                enqueuePacket(ChronosProtocol.buildWeatherHighLow(result.days))
-                enqueuePacket(ChronosProtocol.buildWeatherUvPressure(result.uvIndex, result.pressureHpa))
-                if (result.city.isNotEmpty()) {
-                    enqueuePacket(ChronosProtocol.buildWeatherCity(result.city))
-                }
-                if (result.hourly.isNotEmpty()) {
-                    enqueuePacket(ChronosProtocol.buildWeatherHourly(result.hourly))
-                }
+                cachedWeather = result
+                cachedWeatherAtMs = SystemClock.elapsedRealtime()
+                pushWeather(result)
             }
         }.start()
     }
 
+    /** Queues the packets for an already-obtained forecast. Main thread only. */
+    private fun pushWeather(result: WeatherFetcher.Result) {
+        lastWeatherSendAtMs = SystemClock.elapsedRealtime()
+        weatherSentThisConnection = true
+        Log.i(TAG, "Sending weather: ${result.city}, today ${result.days.firstOrNull()?.temp}°")
+        enqueuePacket(ChronosProtocol.buildWeatherDaily(result.days))
+        enqueuePacket(ChronosProtocol.buildWeatherHighLow(result.days))
+        enqueuePacket(ChronosProtocol.buildWeatherUvPressure(result.uvIndex, result.pressureHpa))
+        if (result.city.isNotEmpty()) {
+            enqueuePacket(ChronosProtocol.buildWeatherCity(result.city))
+        }
+        if (result.hourly.isNotEmpty()) {
+            enqueuePacket(ChronosProtocol.buildWeatherHourly(result.hourly))
+        }
+    }
+
+    /**
+     * Called on every successful reconnect - not just the very first one. The watch's
+     * Extreme Power Save mode disconnects and reconnects BLE every time the screen
+     * sleeps/wakes on battery, which used to make this always re-send weather 2s later
+     * regardless of how recently it last succeeded. That turned a normally-rare
+     * rebuildWeatherLists() LVGL rebuild (see app_hal.cpp) into something running many
+     * times per hour, which is what actually triggered a real firmware crash there
+     * (Guru Meditation LoadProhibited inside lv_obj_clean, confirmed via a live serial
+     * capture). Only schedule the near-immediate send on a genuinely fresh connection or
+     * once the normal 30-minute interval has actually elapsed; otherwise just let the
+     * already-running weatherRunnable cycle continue on its own schedule.
+     */
     private fun startWeatherTimer() {
         mainHandler.removeCallbacks(weatherRunnable)
-        mainHandler.postDelayed(weatherRunnable, 2000)
+        val elapsed = SystemClock.elapsedRealtime() - lastWeatherSendAtMs
+        val delay = when {
+            // Any connection that hasn't been given weather yet gets it right away. A
+            // power-cycled watch has lost everything it was told, so making it wait is
+            // never right - and it costs nothing, because sendWeather() reuses the
+            // cached forecast instead of re-fetching. The old version gated this behind
+            // a 60s floor, which meant power-cycling within a minute of a send left the
+            // watch with no weather for the remainder of the 30-minute window.
+            !weatherSentThisConnection -> 2000L
+            // Normal periodic refresh.
+            elapsed >= WEATHER_REFRESH_INTERVAL_MS -> 2000L
+            else -> WEATHER_REFRESH_INTERVAL_MS - elapsed
+        }
+        mainHandler.postDelayed(weatherRunnable, delay)
     }
 
     private fun stopWeatherTimer() {
@@ -616,7 +940,11 @@ class ChronosBleService : Service() {
     }
 
     private fun startForeground() {
-        val notification = buildNotification(Status.DISCONNECTED)
+        // Use the CURRENT status, not a hardcoded DISCONNECTED: onStartCommand() runs
+        // again on every tap of "Conectar", so tapping it while already connected used to
+        // rewrite the notification to "Buscando el reloj…" even though the connection was
+        // fine and nothing was actually re-scanned.
+        val notification = buildNotification(status)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } else {

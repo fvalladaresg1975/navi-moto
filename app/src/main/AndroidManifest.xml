@@ -12,7 +12,34 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Incoming-call feature: detect ringing calls, look up the caller's name, and let
+         the watch's Accept/Reject buttons actually answer/decline the call.
+         READ_CALL_LOG is required too, not just READ_PHONE_STATE - since Android 10,
+         PhoneStateListener.onCallStateChanged() only delivers the incoming number when
+         both are granted (a privacy change, not optional). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- Place the call directly when a contact is tapped on the watch. ACTION_DIAL (which
+         needs no permission) would only pre-fill the dialer and still require tapping the
+         phone itself - useless when the phone is in a pocket and the watch is on a
+         handlebar mount, which is this project's main use case. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!-- Android 11+ hides other apps' info by default (package visibility) unless the
+         app declares what it needs to see. NotificationAppsActivity lists every
+         launchable app to let the user pick which ones forward notifications - without
+         this, getInstalledApplications() would only return system apps exempt from the
+         filter, hiding WhatsApp/Gmail/Telegram/etc. from the picker. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -29,6 +56,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".NotificationAppsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".WatchContactsActivity"
+            android:exported="false" />
 
         <service
             android:name=".notification.ChronosNotificationListener"

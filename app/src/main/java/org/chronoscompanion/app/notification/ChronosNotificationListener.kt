@@ -50,11 +50,17 @@ class ChronosNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        if (sbn.packageName == packageName) return // never forward our own foreground-service notification
         if (sbn.packageName == MAPS_PACKAGE) {
             handleMapsNotification(sbn)
             return
         }
-        val iconCode = PACKAGE_TO_ICON[sbn.packageName] ?: return
+        if (!NotificationAppsPrefs.isEnabled(this, sbn.packageName)) return
+        // Apps the user enabled that aren't in PACKAGE_TO_ICON still get forwarded, just
+        // with a generic icon - the firmware already falls back to the same generic icon
+        // for any code it doesn't recognize (see getNotificationIconIndex's default case
+        // in ui.c), so this doesn't change what the watch can already handle.
+        val iconCode = PACKAGE_TO_ICON[sbn.packageName] ?: ChronosProtocol.AppIcon.SMS
         handleGeneralNotification(sbn, iconCode)
     }
 

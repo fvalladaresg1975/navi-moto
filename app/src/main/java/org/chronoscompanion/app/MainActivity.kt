@@ -17,13 +17,40 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.switchmaterial.SwitchMaterial
 import org.chronoscompanion.app.ble.ChronosBleService
+import org.chronoscompanion.app.telephony.CallAlertsPrefs
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var deviceNameText: TextView
     private lateinit var statusDot: View
+    private lateinit var callAlertsSwitch: SwitchMaterial
+
+    /** Permissions the incoming-call feature needs: read the ringing state and number,
+     * resolve it against contacts, and answer/decline from the watch. */
+    private val callPermissions = arrayOf(
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.READ_CALL_LOG,
+        Manifest.permission.READ_CONTACTS,
+        Manifest.permission.ANSWER_PHONE_CALLS,
+        Manifest.permission.CALL_PHONE
+    )
+
+    private val callPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        // Enable only if everything was granted - a partial grant means the feature would
+        // half-work (e.g. showing "Desconocido" for every caller, or an inert Reject
+        // button), which is more confusing than leaving it off.
+        val allGranted = results.values.all { it }
+        CallAlertsPrefs.setEnabled(this, allGranted)
+        callAlertsSwitch.isChecked = allGranted
+        if (!allGranted) {
+            Toast.makeText(this, R.string.call_alerts_permissions_missing, Toast.LENGTH_LONG).show()
+        }
+    }
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -63,6 +90,30 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.forgetDeviceButton).setOnClickListener {
             confirmForgetDevice()
         }
+        findViewById<MaterialButton>(R.id.notificationAppsButton).setOnClickListener {
+            startActivity(Intent(this, NotificationAppsActivity::class.java))
+        }
+        findViewById<MaterialButton>(R.id.watchContactsButton).setOnClickListener {
+            startActivity(Intent(this, WatchContactsActivity::class.java))
+        }
+
+        callAlertsSwitch = findViewById(R.id.callAlertsSwitch)
+        callAlertsSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (!isChecked) {
+                CallAlertsPrefs.setEnabled(this, false)
+                return@setOnCheckedChangeListener
+            }
+            val missing = callPermissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isEmpty()) {
+                CallAlertsPrefs.setEnabled(this, true)
+            } else {
+                // Don't persist "on" yet - the launcher's callback decides based on what
+                // the user actually grants, and resets the switch if they decline.
+                callPermissionLauncher.launch(missing.toTypedArray())
+            }
+        }
 
         val filter = IntentFilter(ChronosBleService.ACTION_STATUS_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -96,6 +147,15 @@ class MainActivity : AppCompatActivity() {
         val savedName = getSharedPreferences(ChronosBleService.PREFS_NAME, Context.MODE_PRIVATE)
             .getString(ChronosBleService.PREF_DEVICE_NAME, null)
         applyDeviceName(savedName)
+
+        // Re-check on every resume: the user may have revoked a call permission from
+        // Android's own Settings while the app was backgrounded, which would leave the
+        // switch showing "on" for a feature that can no longer work. Re-assigning
+        // isChecked re-runs the listener above, which is idempotent in both directions.
+        val callPermsOk = callPermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+        callAlertsSwitch.isChecked = CallAlertsPrefs.isEnabled(this) && callPermsOk
     }
 
     override fun onDestroy() {

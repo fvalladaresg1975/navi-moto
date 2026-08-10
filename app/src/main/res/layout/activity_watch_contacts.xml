@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_back_arrow"
+            android:tint="?android:attr/textColorPrimary"
+            android:contentDescription="@string/dialog_cancel" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/watch_contacts_title"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="16dp"
+        android:text="@string/watch_contacts_description"
+        android:textSize="13sp"
+        android:lineSpacingExtra="2dp"
+        android:textColor="?android:attr/textColorSecondary" />
+
+    <EditText
+        android:id="@+id/searchBox"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="12dp"
+        android:paddingHorizontal="16dp"
+        android:background="@drawable/search_box_bg"
+        android:hint="@string/notification_apps_search_hint"
+        android:textColorHint="?android:attr/textColorSecondary"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="15sp"
+        android:singleLine="true"
+        android:inputType="text" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/contactList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp" />
+
+</LinearLayout>

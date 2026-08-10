@@ -87,6 +87,76 @@ object ChronosProtocol {
     }
 
     /**
+     * Builds the "incoming call" ringer-start packet - same command (0x72) as
+     * [buildNotification] but icon=0x01, which the firmware's dataReceived() checks
+     * before the regular new-notification path and routes to the call screen instead
+     * (ChronosESP32.cpp's ringerAlertCallback). [callerName] is shown there.
+     */
+    fun buildRingerStart(callerName: String): ByteArray {
+        val payload = mutableListOf<Byte>()
+        payload.add(0x01) // icon: ringer start (not a real app icon code)
+        payload.add(0x00) // state: unused on this path
+        payload.addAll(truncateUtf8(sanitizeForWatch(callerName), MAX_NOTIFICATION_MESSAGE_BYTES).toByteArray(Charsets.UTF_8).toList())
+        return buildPacket(CMD_NOTIFICATION, 0x00, payload.toByteArray())
+    }
+
+    /** Stops the ringer (icon=0x02) - send when the call ends or is answered/declined
+     * elsewhere (another device, or the phone itself), so the watch's call screen clears. */
+    fun buildRingerStop(): ByteArray {
+        return buildPacket(CMD_NOTIFICATION, 0x00, byteArrayOf(0x02, 0x00))
+    }
+
+    // -------------------------------------------------------------------
+    // Contacts sync (phone -> watch). Three packet types, per the firmware library's
+    // own parser (ChronosESP32.cpp, cases 0xA5 / 0xA2 / 0xA3):
+    //   0xA5 = header: how many contacts follow, and which one is the SOS entry
+    //   0xA2 = one contact's name,   at position `pos`
+    //   0xA3 = one contact's number, at position `pos`
+    // The watch fires its "contacts received" callback when it sees the number packet
+    // for pos == count-1, so the numbers must be sent last / in order.
+    // -------------------------------------------------------------------
+
+    private const val CMD_CONTACT_NAME = 0xA2
+    private const val CMD_CONTACT_NUMBER = 0xA3
+    private const val CMD_CONTACT_HEADER = 0xA5
+
+    /** [sosIndex] marks one entry as the SOS contact (drawn with a different icon on the
+     * watch); pass an out-of-range value like 0xFF for "none". */
+    fun buildContactsHeader(count: Int, sosIndex: Int = 0xFF): ByteArray {
+        return buildPacket(CMD_CONTACT_HEADER, 0x00, byteArrayOf(sosIndex.toByte(), count.toByte()))
+    }
+
+    fun buildContactName(pos: Int, name: String): ByteArray {
+        // The firmware appends these bytes straight into a String as raw chars, so keep
+        // it to what its fonts can render (same sanitizer the notification path uses).
+        val bytes = truncateUtf8(sanitizeForWatch(name), MAX_NAV_FIELD_BYTES).toByteArray(Charsets.UTF_8)
+        return buildPacket(CMD_CONTACT_NAME, pos, bytes)
+    }
+
+    /**
+     * Encodes the number the way the firmware decodes it: each byte holds two digits as
+     * hex nibbles but *swapped* (it formats the byte as "%02X" then swaps the two
+     * characters), and 'A' stands in for '+'. So the pair "A5" must be stored as 0x5A.
+     * An odd digit count is padded with a trailing 'F' nibble, which the firmware drops
+     * because it truncates the decoded string to the explicit length byte.
+     */
+    fun buildContactNumber(pos: Int, number: String): ByteArray {
+        val digits = number.filter { it.isDigit() || it == '+' }.map {
+            if (it == '+') 'A' else it
+        }
+        val payload = mutableListOf<Byte>()
+        payload.add(digits.size.toByte()) // length, so the watch can drop any padding
+        var i = 0
+        while (i < digits.size) {
+            val first = Character.digit(digits[i], 16)
+            val second = if (i + 1 < digits.size) Character.digit(digits[i + 1], 16) else 0x0F
+            payload.add(((second shl 4) or first).toByte())
+            i += 2
+        }
+        return buildPacket(CMD_CONTACT_NUMBER, pos, payload.toByteArray())
+    }
+
+    /**
      * Builds the "set time" packet (command 0x93). Firmware does:
      *   setTime(sec=data[13], min=data[12], hour=data[11], day=data[10], month=data[9],
      *            year=data[7]*256+data[8])
@@ -230,10 +300,24 @@ object ChronosProtocol {
         return String(bytes, 0, end, Charsets.UTF_8)
     }
 
-    /** Commands the watch's music/volume buttons send to the phone (Control enum in ChronosESP32.h). */
+    /** Commands the watch's music/volume buttons send to the phone (Control enum in
+     * ChronosESP32.h), plus CALL_ACCEPT/CALL_REJECT - our own addition (hi=0xC1), sent by
+     * the call screen's new Accept/Reject buttons via a plain ChronosESP32::sendCommand()
+     * call (see app_hal.cpp's sendCallAction()) rather than a library-defined Control
+     * value, since 0xC1 doesn't collide with the library's reserved 0x9D/0x99 range. */
     enum class WatchCommand {
         MUSIC_PLAY, MUSIC_PAUSE, MUSIC_TOGGLE, MUSIC_PREVIOUS, MUSIC_NEXT,
-        VOLUME_UP, VOLUME_DOWN, VOLUME_MUTE
+        VOLUME_UP, VOLUME_DOWN, VOLUME_MUTE,
+        CALL_ACCEPT, CALL_REJECT
+    }
+
+    /** "Dial the contact at this index" - hi=0xC2, the index in the low byte. Separate
+     * from [WatchCommand] because it carries a value rather than being a fixed action. */
+    fun decodeDialContactIndex(bytes: ByteArray): Int? {
+        if (bytes.size != 7) return null
+        if (bytes[0] != 0xAB.toByte() || bytes[3] != 0xFF.toByte() || bytes[5] != 0x80.toByte()) return null
+        if ((bytes[4].toInt() and 0xFF) != 0xC2) return null
+        return bytes[6].toInt() and 0xFF
     }
 
     /**
@@ -252,6 +336,8 @@ object ChronosProtocol {
             hi == 0x9D && lo == 0x01 -> WatchCommand.MUSIC_PAUSE
             hi == 0x9D && lo == 0x02 -> WatchCommand.MUSIC_PREVIOUS
             hi == 0x9D && lo == 0x03 -> WatchCommand.MUSIC_NEXT
+            hi == 0xC1 && lo == 0x01 -> WatchCommand.CALL_ACCEPT
+            hi == 0xC1 && lo == 0x02 -> WatchCommand.CALL_REJECT
             hi == 0x99 && lo == 0x00 -> WatchCommand.MUSIC_TOGGLE
             hi == 0x99 && lo == 0xA1 -> WatchCommand.VOLUME_UP
             hi == 0x99 && lo == 0xA2 -> WatchCommand.VOLUME_DOWN

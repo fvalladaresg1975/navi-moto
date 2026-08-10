@@ -18,4 +18,21 @@
     <string name="dialog_cancel">Cancelar</string>
 
     <string name="info_text">Primero tocá el botón 1 y activá esta app en la lista de acceso a notificaciones. Después volvé y tocá el botón 2.\n\nUna vez conectado, el reloj recibe notificaciones (WhatsApp, SMS, etc.), navegación de Google Maps, clima y control de música — y podés detener la conexión en cualquier momento desde la notificación persistente.</string>
+
+    <string name="button_notification_apps">Elegir apps de notificaciones</string>
+    <string name="notification_apps_title">Notificaciones</string>
+    <string name="notification_apps_description">Elegí de qué aplicaciones querés recibir notificaciones en el reloj.</string>
+    <string name="notification_apps_search_hint">Buscar</string>
+
+    <string name="label_call_alerts">Mostrar llamadas entrantes en el reloj</string>
+    <string name="call_alerts_permissions_missing">Faltan permisos de teléfono y contactos para mostrar las llamadas en el reloj</string>
+
+    <string name="button_watch_contacts">Elegir contactos del reloj</string>
+    <string name="watch_contacts_title">Contactos</string>
+    <string name="watch_contacts_description">Elegí los contactos que querés tener en el reloj. Tocando uno en el reloj, el teléfono lo llama.</string>
+    <string name="watch_contacts_permission_missing">Activá primero “Mostrar llamadas entrantes en el reloj” para dar permiso a los contactos</string>
+    <string name="watch_contacts_limit">Podés elegir hasta %1$d contactos</string>
+
+    <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
+    <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
 </resources>

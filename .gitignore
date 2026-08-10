@@ -14,3 +14,6 @@ app/release/
 *.aab
 *.jks
 *.keystore
+
+# Local rollback snapshots (APKs + notes), not source
+backups/
