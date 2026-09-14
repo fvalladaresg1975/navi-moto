@@ -1,6 +1,7 @@
 package org.chronoscompanion.app.notification
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.service.notification.NotificationListenerService
@@ -42,11 +43,75 @@ class ChronosNotificationListener : NotificationListenerService() {
             "com.skype.raider" to ChronosProtocol.AppIcon.SKYPE,
             "com.kakao.talk" to ChronosProtocol.AppIcon.KAKAOTALK,
         )
+
+        /**
+         * The live listener, so [ChronosBleService] can reach [getActiveNotifications] for
+         * [stopMapsNavigation]. Only a bound listener can read active notifications, hence
+         * set/cleared on the connect/disconnect callbacks rather than in onCreate/onDestroy.
+         */
+        @Volatile
+        var instance: ChronosNotificationListener? = null
+            private set
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this
         Log.i(TAG, "Notification listener connected")
+    }
+
+    override fun onListenerDisconnected() {
+        instance = null
+        super.onListenerDisconnected()
+    }
+
+    /**
+     * Ends the running Google Maps navigation by firing the "Salir de la navegación" action
+     * on Maps' own notification - the same thing a tap on that button in the shade does, and
+     * how Wear OS / Android Auto end it too. There is no public "stop navigation" intent in
+     * Maps, so this is the only sanctioned way in.
+     *
+     * Returns false when there is nothing to fire, so the caller can tell the user instead of
+     * failing silently.
+     */
+    fun stopMapsNavigation(): Boolean {
+        val sbn = try {
+            activeNotifications?.firstOrNull { it.packageName == MAPS_PACKAGE }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Cannot read active notifications", e)
+            null
+        } ?: run {
+            Log.w(TAG, "stopMapsNavigation: no Maps notification is active")
+            return false
+        }
+
+        val actions = sbn.notification.actions
+        if (actions.isNullOrEmpty()) {
+            Log.w(TAG, "stopMapsNavigation: Maps notification has no actions")
+            return false
+        }
+
+        // Verified on a real device (dumpsys notification): the navigation notification
+        // carries exactly one action, "Salir de la navegación". Prefer matching it by title
+        // in case Maps ever adds others (e.g. mute); fall back to the sole action so a
+        // different locale still works.
+        val action = actions.firstOrNull { a ->
+            val t = a.title?.toString()?.lowercase().orEmpty()
+            t.contains("navegaci") || t.contains("navigation") || t.contains("salir") || t.contains("exit")
+        } ?: actions.singleOrNull() ?: run {
+            Log.w(TAG, "stopMapsNavigation: ${actions.size} actions, none recognised as exit: " +
+                actions.joinToString { "'${it.title}'" })
+            return false
+        }
+
+        return try {
+            action.actionIntent.send()
+            Log.i(TAG, "stopMapsNavigation: fired '${action.title}'")
+            true
+        } catch (e: PendingIntent.CanceledException) {
+            Log.w(TAG, "stopMapsNavigation: action intent was cancelled", e)
+            false
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -133,13 +198,13 @@ class ChronosNotificationListener : NotificationListenerService() {
         }
 
         val iconBitmap = extractIconBitmap(notification)
+        var packedIcon: ByteArray? = null
         var hasIcon = false
         var crc = 0L
 
         if (iconBitmap != null) {
-            val packed = bitmapTo1bpp(iconBitmap)
-            crc = ChronosProtocol.crc32Of(packed)
-            service.sendNavigationIcon(packed, crc)
+            packedIcon = bitmapTo1bpp(iconBitmap)
+            crc = ChronosProtocol.crc32Of(packedIcon)
             hasIcon = true
         }
 
@@ -152,6 +217,19 @@ class ChronosNotificationListener : NotificationListenerService() {
         val distance = subParts.getOrElse(1) { "" }
         val eta = subParts.getOrElse(2) { "" }
 
+        // ORDER MATTERS - data before icon, and the watch draws the wrong arrow if reversed.
+        //
+        // The firmware redraws the turn arrow when the icon's LAST chunk arrives (0xEE, pos 2
+        // -> CF_NAV_ICON), but gates that redraw on nav.iconCRC, which the library only sets
+        // from the navigation DATA packet (0xEF). Sending the icon first therefore hits the
+        // redraw while iconCRC still holds the PREVIOUS arrow's value: the CRC compares equal
+        // to what is already displayed, the redraw is skipped, and the new bytes sit in the
+        // buffer undrawn.
+        //
+        // This was always wrong, but used to self-correct within a second because the icon was
+        // retransmitted on every Maps update - the next round found iconCRC updated. Now that
+        // an unchanged icon is no longer resent, there is no next round, and the watch would
+        // keep showing the previous turn's arrow until the turn after it.
         service.sendNavigationData(
             title = title,
             duration = duration,
@@ -162,6 +240,10 @@ class ChronosNotificationListener : NotificationListenerService() {
             hasIcon = hasIcon,
             iconCrc = crc
         )
+
+        if (packedIcon != null) {
+            service.sendNavigationIcon(packedIcon, crc)
+        }
     }
 
     private fun extractIconBitmap(notification: Notification): Bitmap? {

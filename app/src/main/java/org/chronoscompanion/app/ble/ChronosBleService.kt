@@ -74,6 +74,13 @@ class ChronosBleService : Service() {
         private const val TIME_SYNC_INTERVAL_MS = 10 * 60 * 1000L // re-sync every 10 min to correct drift
         private const val WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000L // Open-Meteo updates hourly at most
         private const val DISCOVERY_DURATION_MS = 8000L
+        private const val MUSIC_STATE_POLL_MS = 5000L
+
+        // Packet kinds, used only to let navigation updates supersede each other in the
+        // write queue. Everything else is KIND_OTHER and is never dropped.
+        private const val KIND_OTHER = 0
+        private const val KIND_NAV_DATA = 1
+        private const val KIND_NAV_ICON = 2
 
         const val ACTION_STATUS_CHANGED = "org.chronoscompanion.app.STATUS_CHANGED"
         const val EXTRA_STATUS = "status"
@@ -99,9 +106,26 @@ class ChronosBleService : Service() {
 
     private var bluetoothGatt: BluetoothGatt? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
-    private val writeQueue = ArrayDeque<ByteArray>()
+
+    /**
+     * One 20-byte BLE chunk waiting to go out, tagged so [coalesce] can drop superseded
+     * navigation updates. [group] identifies the logical packet the chunk came from:
+     * chunks of a packet that has already begun transmitting must never be dropped, or the
+     * firmware would reassemble a truncated packet.
+     */
+    private class Chunk(val bytes: ByteArray, val kind: Int, val group: Long)
+
+    private val writeQueue = ArrayDeque<Chunk>()
     private var writeInFlight = false
     private var writeGeneration = 0
+    private var nextGroupId = 0L
+
+    /**
+     * The one packet that may be half-transmitted right now, and so must never be coalesced
+     * away. A single value suffices: chunks leave the queue strictly in order, so every
+     * earlier packet is already fully sent and every later one is still untouched.
+     */
+    private var startedGroup = -1L
     private val mainHandler = Handler(Looper.getMainLooper())
     // Wall-clock time (SystemClock.elapsedRealtime) of the last weather send that actually
     // ran - lets startWeatherTimer() skip redundant sends on rapid reconnects (see there).
@@ -118,6 +142,19 @@ class ChronosBleService : Service() {
     // actually receives them, so while BLE was silently broken every attempt still "counted"
     // and then blocked the next one for 30 minutes - the watch's weather never refreshed.
     private var weatherSentThisConnection = false
+
+    // --- Navigation latency (see sendNavigationData / sendNavigationIcon) -----------------
+    // Google Maps re-posts its notification about once a second while driving, and each one
+    // used to push the full 48x48 turn icon (18 chunks) plus the data (6 chunks). At the
+    // default connection interval that is ~1s of airtime per update - the queue ran at 100%
+    // capacity, so any hiccup accumulated into the multi-second lag seen on a real ride.
+    //
+    // CRC of the turn icon currently on the watch. The arrow is identical for the whole
+    // approach to a turn, so resending it is pure waste - the firmware already discards it
+    // by CRC on arrival, but only after the bytes have crossed the air. Reset whenever the
+    // watch may have lost it (disconnect, navigation stop) so it is pushed again.
+    private var lastSentIconCrc = 0L
+    private var navPriorityActive = false
 
     override fun onCreate() {
         super.onCreate()
@@ -154,6 +191,7 @@ class ChronosBleService : Service() {
     override fun onDestroy() {
         stopTimeSyncTimer()
         stopWeatherTimer()
+        stopMusicStateTimer()
         stopScanIfRunning()
         unregisterCallStateReceiver()
         bluetoothGatt?.close()
@@ -212,6 +250,7 @@ class ChronosBleService : Service() {
         rxCharacteristic = null
         writeQueue.clear()
         writeInFlight = false
+        resetNavState()
         setStatus(Status.DISCONNECTED)
     }
 
@@ -342,6 +381,7 @@ class ChronosBleService : Service() {
         rxCharacteristic = null
         writeQueue.clear()
         writeInFlight = false
+        resetNavState()
         saveDevice(device.address, device.name)
         val adapter = bluetoothAdapter ?: return
         connect(adapter.getRemoteDevice(device.address))
@@ -382,10 +422,12 @@ class ChronosBleService : Service() {
                 rxCharacteristic = null
                 writeQueue.clear()
                 writeInFlight = false
+                resetNavState()
                 weatherSentThisConnection = false
                 sessionStarted = false
                 stopTimeSyncTimer()
                 stopWeatherTimer()
+                stopMusicStateTimer()
                 mainHandler.postDelayed({ startScan() }, 3000)
             }
         }
@@ -481,6 +523,7 @@ class ChronosBleService : Service() {
         startTimeSyncTimer()
         startWeatherTimer()
         sendContacts()
+        startMusicStateTimer()
     }
 
     // ---------------------------------------------------------------------
@@ -500,6 +543,7 @@ class ChronosBleService : Service() {
             ChronosProtocol.WatchCommand.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
             ChronosProtocol.WatchCommand.CALL_ACCEPT -> answerRingingCall()
             ChronosProtocol.WatchCommand.CALL_REJECT -> declineRingingCall()
+            ChronosProtocol.WatchCommand.NAVIGATION_STOP -> stopNavigationFromWatch()
         }
     }
 
@@ -526,6 +570,52 @@ class ChronosBleService : Service() {
         val eventTime = SystemClock.uptimeMillis()
         controller.dispatchMediaButtonEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, keyCode, 0))
         controller.dispatchMediaButtonEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, keyCode, 0))
+    }
+
+    // ---------------------------------------------------------------------
+    // Playback state -> watch, so its play button can show pause while playing
+    // ---------------------------------------------------------------------
+
+    /** null until known, so the first reading is always pushed. */
+    private var lastSentMusicPlaying: Boolean? = null
+
+    private fun isMusicPlaying(): Boolean {
+        val sessionManager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
+        val controllers = try {
+            sessionManager.getActiveSessions(ComponentName(this, ChronosNotificationListener::class.java))
+        } catch (e: SecurityException) {
+            return false
+        }
+        return controllers.any { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+    }
+
+    /**
+     * Polls rather than subscribing to MediaController callbacks: the state has to be
+     * tracked across whichever app happens to own the session, and juggling
+     * per-controller listeners as sessions come and go is a lot of lifecycle for
+     * something this small. The query is local and cheap, and a packet only goes out when
+     * the value actually changes, so an idle phone sends nothing at all.
+     */
+    private val musicStateRunnable = object : Runnable {
+        override fun run() {
+            val playing = isMusicPlaying()
+            if (playing != lastSentMusicPlaying) {
+                lastSentMusicPlaying = playing
+                Log.i(TAG, "Music ${if (playing) "playing" else "paused"}, updating watch")
+                enqueuePacket(ChronosProtocol.buildMusicState(playing))
+            }
+            mainHandler.postDelayed(this, MUSIC_STATE_POLL_MS)
+        }
+    }
+
+    private fun startMusicStateTimer() {
+        mainHandler.removeCallbacks(musicStateRunnable)
+        lastSentMusicPlaying = null // force a push on this connection
+        mainHandler.postDelayed(musicStateRunnable, 2000)
+    }
+
+    private fun stopMusicStateTimer() {
+        mainHandler.removeCallbacks(musicStateRunnable)
     }
 
     private fun adjustVolume(direction: Int) {
@@ -670,6 +760,24 @@ class ChronosBleService : Service() {
         mainHandler.post { Toast.makeText(this, msgRes, Toast.LENGTH_LONG).show() }
     }
 
+    /**
+     * The watch's "Salir" button. Nothing is sent back to the watch on success on purpose:
+     * Maps removes its notification, onNotificationRemoved fires the normal
+     * sendNavigationStop(), and the watch closes its screen through the path it always
+     * uses. One source of truth (Maps), no state to keep in sync.
+     */
+    private fun stopNavigationFromWatch() {
+        val listener = ChronosNotificationListener.instance
+        if (listener == null) {
+            Log.w(TAG, "NAVIGATION_STOP: notification listener not connected")
+            toast(R.string.nav_stop_failed)
+            return
+        }
+        if (!listener.stopMapsNavigation()) {
+            toast(R.string.nav_stop_failed)
+        }
+    }
+
     private fun answerRingingCall() {
         if (!hasAnswerPermission()) {
             Log.w(TAG, "Cannot answer: ANSWER_PHONE_CALLS not granted")
@@ -720,9 +828,12 @@ class ChronosBleService : Service() {
             return
         }
         val next = writeQueue.poll() ?: return
+        // From here on this packet is committed: dropping its remaining chunks would leave
+        // the firmware reassembling a truncated packet.
+        startedGroup = next.group
         writeInFlight = true
         val myGeneration = ++writeGeneration
-        Log.i(TAG, "Writing ${next.size} bytes: ${next.joinToString(" ") { "%02x".format(it) }}")
+        Log.i(TAG, "Writing ${next.bytes.size} bytes: ${next.bytes.joinToString(" ") { "%02x".format(it) }}")
         // onCharacteristicWrite occasionally never arrives after a stop/reconnect cycle
         // (observed: BLE stays "connected" but the watch's write ack callback is lost),
         // which used to leave writeInFlight stuck true forever - every future packet
@@ -752,23 +863,39 @@ class ChronosBleService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             gatt.writeCharacteristic(
                 characteristic,
-                next,
+                next.bytes,
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             )
         } else {
             @Suppress("DEPRECATION")
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             @Suppress("DEPRECATION")
-            characteristic.value = next
+            characteristic.value = next.bytes
             @Suppress("DEPRECATION")
             gatt.writeCharacteristic(characteristic)
         }
     }
 
-    private fun enqueuePacket(logicalPacket: ByteArray) {
-        val chunks = ChronosProtocol.chunk(logicalPacket)
-        writeQueue.addAll(chunks)
+    private fun enqueuePacket(logicalPacket: ByteArray, kind: Int = KIND_OTHER) {
+        val group = ++nextGroupId
+        ChronosProtocol.chunk(logicalPacket).forEach { writeQueue.add(Chunk(it, kind, group)) }
         mainHandler.post { drainQueue() }
+    }
+
+    /**
+     * Drops queued chunks of the given kind that have not started transmitting yet.
+     *
+     * Only ever used for navigation: a superseded turn instruction has negative value - the
+     * watch showing a stale street name is worse than showing nothing - so transmitting it
+     * before the current one is pure added latency. This is what stops delay accumulating
+     * over a long ride: the backlog can never exceed one update, no matter how far behind
+     * the link falls.
+     */
+    private fun coalesce(kind: Int) {
+        val before = writeQueue.size
+        writeQueue.removeAll { it.kind == kind && it.group != startedGroup }
+        val dropped = before - writeQueue.size
+        if (dropped > 0) Log.i(TAG, "Coalesced $dropped stale chunk(s) of kind $kind")
     }
 
     fun sendNavigationData(
@@ -792,11 +919,62 @@ class ChronosBleService : Service() {
             isNavigation = true,
             iconCrc = iconCrc
         )
-        enqueuePacket(packet)
+        // Navigation is the watch's primary job, so it gets the tightest connection interval
+        // the phone will grant - but only while actually navigating, so the rest of the day
+        // costs no extra battery on either side.
+        requestNavPriority(true)
+        // This update replaces any earlier one still waiting, rather than queueing behind it.
+        //
+        // Except while an icon is queued: the firmware takes the icon's identifying CRC from
+        // the DATA packet, so the data packet sitting in front of those icon chunks is what
+        // makes the watch actually draw them (see the ordering note in
+        // ChronosNotificationListener.handleMapsNotification). Dropping it would leave the
+        // icon arriving against a stale CRC and the redraw would be skipped - the very bug
+        // the send-order fix addresses. Icons are only queued on an actual turn change now,
+        // so this costs at most one un-coalesced update.
+        if (writeQueue.none { it.kind == KIND_NAV_ICON }) {
+            coalesce(KIND_NAV_DATA)
+        }
+        enqueuePacket(packet, KIND_NAV_DATA)
     }
 
     fun sendNavigationStop() {
+        requestNavPriority(false)
+        // The watch has no icon once navigation stops, so the next one must be sent again.
+        lastSentIconCrc = 0L
+        coalesce(KIND_NAV_DATA)
+        coalesce(KIND_NAV_ICON)
         enqueuePacket(ChronosProtocol.buildNavigationStop())
+    }
+
+    /**
+     * Raises the BLE connection interval while navigating (~40ms -> ~11ms on most phones),
+     * which is the dominant cost of a multi-chunk update since every chunk waits a full
+     * interval for its write acknowledgement.
+     */
+    /**
+     * Clears navigation link state when the GATT connection goes away. Without this a
+     * reconnecting watch would sit with no turn icon at all: the CRC check would keep
+     * matching the icon the *previous* connection had delivered and skip every resend.
+     * The connection priority is a property of that dead connection too, so the flag must
+     * drop as well or the next connection would never be raised to HIGH.
+     */
+    private fun resetNavState() {
+        lastSentIconCrc = 0L
+        navPriorityActive = false
+        startedGroup = -1L
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestNavPriority(active: Boolean) {
+        if (active == navPriorityActive) return
+        val gatt = bluetoothGatt ?: return
+        navPriorityActive = active
+        val granted = gatt.requestConnectionPriority(
+            if (active) BluetoothGatt.CONNECTION_PRIORITY_HIGH
+            else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
+        )
+        Log.i(TAG, "Connection priority ${if (active) "HIGH" else "BALANCED"} requested=$granted")
     }
 
     fun sendNotification(iconCode: Int, message: String) {
@@ -921,9 +1099,20 @@ class ChronosBleService : Service() {
 
     /** [packedIcon] must be the 288-byte buffer from [ChronosProtocol.packIconBits]. */
     fun sendNavigationIcon(packedIcon: ByteArray, crc: Long) {
+        // The single biggest win for navigation latency: the turn arrow is the same image
+        // for the entire approach to a turn, yet Maps re-posts its notification about once a
+        // second. Sending it every time meant ~18 of the ~24 chunks per update - roughly 75%
+        // of all navigation airtime - carried an image the watch already had and discarded
+        // by CRC on arrival.
+        if (crc == lastSentIconCrc) return
+        lastSentIconCrc = crc
+        coalesce(KIND_NAV_ICON)
         for (chunkPos in 0..2) {
             val chunkBytes = packedIcon.copyOfRange(chunkPos * 96, chunkPos * 96 + 96)
-            enqueuePacket(ChronosProtocol.buildNavigationIconChunk(chunkPos, crc, chunkBytes))
+            enqueuePacket(
+                ChronosProtocol.buildNavigationIconChunk(chunkPos, crc, chunkBytes),
+                KIND_NAV_ICON
+            )
         }
     }
 

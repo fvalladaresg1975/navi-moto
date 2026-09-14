@@ -34,5 +34,6 @@
     <string name="watch_contacts_limit">Podés elegir hasta %1$d contactos</string>
 
     <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
+    <string name="nav_stop_failed">No se pudo salir de la navegación: no hay una navegación de Google Maps activa en el celular.</string>
     <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
 </resources>

@@ -106,6 +106,16 @@ object ChronosProtocol {
         return buildPacket(CMD_NOTIFICATION, 0x00, byteArrayOf(0x02, 0x00))
     }
 
+    /**
+     * Tells the watch whether media is currently playing, so its play button can show a
+     * pause icon instead. Command 0xC3 is our own: the ChronosESP32 protocol carries no
+     * playback state, and the firmware decodes this in its raw dataCallback rather than
+     * through the library's parser, so no vendored-library changes are needed.
+     */
+    fun buildMusicState(playing: Boolean): ByteArray {
+        return buildPacket(0xC3, 0x00, byteArrayOf(if (playing) 0x01 else 0x00))
+    }
+
     // -------------------------------------------------------------------
     // Contacts sync (phone -> watch). Three packet types, per the firmware library's
     // own parser (ChronosESP32.cpp, cases 0xA5 / 0xA2 / 0xA3):
@@ -308,7 +318,9 @@ object ChronosProtocol {
     enum class WatchCommand {
         MUSIC_PLAY, MUSIC_PAUSE, MUSIC_TOGGLE, MUSIC_PREVIOUS, MUSIC_NEXT,
         VOLUME_UP, VOLUME_DOWN, VOLUME_MUTE,
-        CALL_ACCEPT, CALL_REJECT
+        CALL_ACCEPT, CALL_REJECT,
+        /** hi=0xC4: the watch's "Salir" button asks the phone to end Maps navigation. */
+        NAVIGATION_STOP
     }
 
     /** "Dial the contact at this index" - hi=0xC2, the index in the low byte. Separate
@@ -338,6 +350,7 @@ object ChronosProtocol {
             hi == 0x9D && lo == 0x03 -> WatchCommand.MUSIC_NEXT
             hi == 0xC1 && lo == 0x01 -> WatchCommand.CALL_ACCEPT
             hi == 0xC1 && lo == 0x02 -> WatchCommand.CALL_REJECT
+            hi == 0xC4 && lo == 0x01 -> WatchCommand.NAVIGATION_STOP
             hi == 0x99 && lo == 0x00 -> WatchCommand.MUSIC_TOGGLE
             hi == 0x99 && lo == 0xA1 -> WatchCommand.VOLUME_UP
             hi == 0x99 && lo == 0xA2 -> WatchCommand.VOLUME_DOWN
