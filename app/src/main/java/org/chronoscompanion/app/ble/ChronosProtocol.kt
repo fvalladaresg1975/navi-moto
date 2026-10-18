@@ -117,6 +117,108 @@ object ChronosProtocol {
     }
 
     // -------------------------------------------------------------------
+    // Route mode (phone -> watch), our own command 0xC5, decoded in the firmware's
+    // dataCallback like 0xC3 - no library change.
+    //   sub 0x01 = frame: payload [n][x0 hi][x0 lo][y0 hi][y0 lo]...  n <= ROUTE_MAX_POINTS
+    //              then [speed km/h, 255 = unknown][limit km/h, 0 = unknown]
+    //   sub 0x00 = clear (leave route mode)
+    // Coordinates are signed 16-bit WATCH PIXELS RELATIVE TO THE RIDER, y negative =
+    // ahead. All geometry (projection, heading-up rotation, scale, simplification) is
+    // done here on the phone; the watch only offsets by where it draws the rider and
+    // strokes the line. Keeps the firmware small and lets the look be tuned by APK.
+    // -------------------------------------------------------------------
+
+    const val ROUTE_MAX_POINTS = 32
+    private const val CMD_ROUTE = 0xC5
+
+    /** Rider pose in the street map's frame, appended to route frames so the watch can
+     * place the streets it holds: [x dm i32][y dm i32][heading 0.01 deg u16][px/m x100 u8]. */
+    data class RiderPose(val xDm: Int, val yDm: Int, val headingCentiDeg: Int, val scale100: Int)
+
+    fun buildRouteFrame(points: List<Pair<Int, Int>>, speedKmh: Int? = null, limitKmh: Int? = null,
+                        pose: RiderPose? = null): ByteArray {
+        val pts = points.take(ROUTE_MAX_POINTS)
+        val base = 1 + pts.size * 4 + 2
+        val payload = ByteArray(base + if (pose != null) 11 else 0)
+        payload[base - 2] = (speedKmh?.coerceIn(0, 254) ?: 255).toByte()
+        payload[base - 1] = (limitKmh?.coerceIn(1, 254) ?: 0).toByte()
+        payload[0] = pts.size.toByte()
+        pts.forEachIndexed { i, (x, y) ->
+            val cx = x.coerceIn(-32768, 32767)
+            val cy = y.coerceIn(-32768, 32767)
+            val o = 1 + i * 4
+            payload[o] = ((cx shr 8) and 0xFF).toByte()
+            payload[o + 1] = (cx and 0xFF).toByte()
+            payload[o + 2] = ((cy shr 8) and 0xFF).toByte()
+            payload[o + 3] = (cy and 0xFF).toByte()
+        }
+        if (pose != null) {
+            putInt32(payload, base, pose.xDm)
+            putInt32(payload, base + 4, pose.yDm)
+            payload[base + 8] = ((pose.headingCentiDeg shr 8) and 0xFF).toByte()
+            payload[base + 9] = (pose.headingCentiDeg and 0xFF).toByte()
+            payload[base + 10] = pose.scale100.coerceIn(1, 255).toByte()
+        }
+        return buildPacket(CMD_ROUTE, 0x01, payload)
+    }
+
+    private fun putInt32(b: ByteArray, o: Int, v: Int) {
+        b[o] = ((v shr 24) and 0xFF).toByte()
+        b[o + 1] = ((v shr 16) and 0xFF).toByte()
+        b[o + 2] = ((v shr 8) and 0xFF).toByte()
+        b[o + 3] = (v and 0xFF).toByte()
+    }
+
+    // -------------------------------------------------------------------
+    // Street layer (phone -> watch), our own command 0xC7, decoded in dataCallback.
+    //   sub 0x00 = forget every street held
+    //   sub 0x01 = add: [anchorX m i32][anchorY m i32][count u8] then per street
+    //              [class u8][n u8][dx m i16][dy m i16]*n, offsets from the anchor, in the
+    //              street map's frame (see StreetMap). Class 0 minor .. 2 major.
+    // The watch keeps them and draws them under the route line from the pose in each
+    // route frame.
+    // -------------------------------------------------------------------
+
+    private const val CMD_STREETS = 0xC7
+    /** Payload budget per packet: the library reassembles packets into a 512-byte buffer. */
+    const val STREETS_MAX_PAYLOAD = 470
+
+    fun streetBytes(points: Int): Int = 2 + points * 4
+
+    fun buildStreetsClear(): ByteArray = buildPacket(CMD_STREETS, 0x00, ByteArray(0))
+
+    /** Every street's offsets from the anchor must fit in 16 bits (checked by the caller). */
+    fun buildStreets(anchorX: Int, anchorY: Int, streets: List<org.chronoscompanion.app.route.StreetMap.Street>): ByteArray {
+        val size = 9 + streets.sumOf { streetBytes(it.xs.size) }
+        val p = ByteArray(size)
+        putInt32(p, 0, anchorX)
+        putInt32(p, 4, anchorY)
+        p[8] = streets.size.toByte()
+        var o = 9
+        for (s in streets) {
+            p[o++] = s.cls.toByte()
+            p[o++] = s.xs.size.toByte()
+            for (i in s.xs.indices) {
+                val dx = s.xs[i] - anchorX
+                val dy = s.ys[i] - anchorY
+                p[o++] = ((dx shr 8) and 0xFF).toByte()
+                p[o++] = (dx and 0xFF).toByte()
+                p[o++] = ((dy shr 8) and 0xFF).toByte()
+                p[o++] = (dy and 0xFF).toByte()
+            }
+        }
+        return buildPacket(CMD_STREETS, 0x01, p)
+    }
+
+    fun buildRouteClear(): ByteArray = buildPacket(CMD_ROUTE, 0x00, ByteArray(0))
+
+    /** 0xC6: current speed + posted limit while navigating with Google Maps (route mode
+     * carries them inside its frames instead). [speed km/h, 255 = unknown][limit, 0 = unknown]. */
+    fun buildSpeedInfo(speedKmh: Int?, limitKmh: Int?): ByteArray = buildPacket(0xC6, 0x01, byteArrayOf(
+        (speedKmh?.coerceIn(0, 254) ?: 255).toByte(),
+        (limitKmh?.coerceIn(1, 254) ?: 0).toByte()))
+
+    // -------------------------------------------------------------------
     // Contacts sync (phone -> watch). Three packet types, per the firmware library's
     // own parser (ChronosESP32.cpp, cases 0xA5 / 0xA2 / 0xA3):
     //   0xA5 = header: how many contacts follow, and which one is the SOS entry

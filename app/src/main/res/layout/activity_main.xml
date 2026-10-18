@@ -24,7 +24,7 @@
                 android:layout_height="56dp"
                 android:background="@drawable/logo_badge_bg"
                 android:padding="10dp"
-                android:src="@drawable/ic_watch_logo"
+                android:src="@drawable/ic_nav_logo"
                 android:contentDescription="@string/app_name" />
 
             <TextView
@@ -122,6 +122,14 @@
             android:layout_height="wrap_content"
             android:text="@string/button_watch_contacts" />
 
+        <!-- Route mode, phase 1: drives a made-up road on the watch to judge the view. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/routeDemoButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_route_demo" />
+
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -153,6 +161,89 @@
                     android:id="@+id/callAlertsSwitch"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/label_turn_beep"
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/turnBeepSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/label_street_map"
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/streetMapSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/streetCacheText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textSize="12sp"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/streetClearButton"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:textSize="13sp"
+                    android:text="@string/button_street_clear" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

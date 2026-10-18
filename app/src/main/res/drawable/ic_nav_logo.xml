@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main-screen badge: the launcher icon's drawing (ic_launcher_foreground), cropped to the
+     artwork so it fills the round badge. Keep the two in sync. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <group
+        android:translateX="-22"
+        android:translateY="-22">
+        <path
+            android:pathData="M26,54 A28,28 0 1 1 82,54 A28,28 0 1 1 26,54 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5.5" />
+        <path
+            android:pathData="M54,62 L54,47 Q54,40 62,39"
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M54,50 L63.5,73 L54,66.5 L44.5,73 Z"
+            android:fillColor="#FFC24D" />
+    </group>
+</vector>

@@ -117,6 +117,9 @@ class ChronosNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return // never forward our own foreground-service notification
         if (sbn.packageName == MAPS_PACKAGE) {
+            // While route mode drives the watch, Maps must not: two sources would overwrite
+            // each other's turn, distance and icon every second.
+            if (ChronosBleService.instance?.isRouteActive == true) return
             handleMapsNotification(sbn)
             return
         }
@@ -131,7 +134,10 @@ class ChronosNotificationListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         if (sbn.packageName != MAPS_PACKAGE) return
+        // Closing Maps while route mode runs must not send "navigation stopped" over it.
+        if (ChronosBleService.instance?.isRouteActive == true) return
         Log.i(TAG, "Maps notification removed")
+        ChronosBleService.instance?.onMapsNavigationStopped()
         ChronosBleService.instance?.sendNavigationStop()
     }
 
@@ -196,6 +202,8 @@ class ChronosNotificationListener : NotificationListenerService() {
             Log.w(TAG, "BLE service not running, dropping notification")
             return
         }
+        // Speed + posted limit for the watch while Maps navigates (no-op once running).
+        service.onMapsNavigationUpdate()
 
         val iconBitmap = extractIconBitmap(notification)
         var packedIcon: ByteArray? = null
@@ -244,6 +252,8 @@ class ChronosNotificationListener : NotificationListenerService() {
         if (packedIcon != null) {
             service.sendNavigationIcon(packedIcon, crc)
         }
+        // Beep at the moment to turn (TurnBeeper) - timed from Maps' own distance.
+        service.onMapsManeuver(title, distance, text, crc)
     }
 
     private fun extractIconBitmap(notification: Notification): Bitmap? {

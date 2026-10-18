@@ -5,11 +5,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Precise location on every Android version for route mode: the road is drawn
+         relative to the rider, so an approximate (~1-3 km) fix is useless. It used to be
+         capped at API 30, when only the pre-Android-12 BLE scan needed it. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Route mode follows the GPS with the screen off; Android 14 requires the service to
+         be a location-type foreground service for that (promoted only while a route runs). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Incoming-call feature: detect ringing calls, look up the caller's name, and let
@@ -65,6 +71,26 @@
             android:name=".WatchContactsActivity"
             android:exported="false" />
 
+        <!-- Route mode entry point: a destination shared from CoMaps, Google Maps, etc.
+             Shows progress and the route summary, then hands the route to the BLE service. -->
+        <activity
+            android:name=".route.ShareDestinationActivity"
+            android:exported="true"
+            android:label="@string/share_destination_label"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".notification.ChronosNotificationListener"
             android:exported="false"
@@ -74,10 +100,23 @@
             </intent-filter>
         </service>
 
+        <!-- Home-screen widget: status, Conectar / Detener ruta, beep and street switches. -->
+        <receiver
+            android:name=".widget.NaviWidget"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/navi_widget_info" />
+        </receiver>
+
         <service
             android:name=".ble.ChronosBleService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
     </application>
 </manifest>

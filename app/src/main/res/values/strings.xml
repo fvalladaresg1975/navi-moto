@@ -1,39 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Chronos Companion</string>
+    <string name="app_name">Navi Moto</string>
 
-    <string name="status_not_started">Estado del reloj: sin iniciar</string>
-    <string name="status_prefix">Estado del reloj: </string>
+    <string name="status_not_started">Estado del navegador: sin iniciar</string>
+    <string name="status_prefix">Estado del navegador: </string>
 
     <string name="button_enable_notifications">1. Habilitar acceso a notificaciones</string>
-    <string name="button_connect">2. Conectar con el reloj</string>
-    <string name="button_change_device">Cambiar de reloj</string>
-    <string name="button_forget_device">Olvidar este reloj</string>
+    <string name="button_connect">2. Conectar con el navegador</string>
+    <string name="button_change_device">Cambiar de navegador</string>
+    <string name="button_forget_device">Olvidar este navegador</string>
 
     <string name="permissions_missing">Faltan permisos de Bluetooth para continuar</string>
-    <string name="status_starting">Estado del reloj: iniciando…</string>
-    <string name="discovery_searching">Buscando relojes cercanos…</string>
-    <string name="discovery_none_found">No se encontró ningún reloj Chronos cerca</string>
-    <string name="discovery_title">Elegí un reloj</string>
+    <string name="status_starting">Estado del navegador: iniciando…</string>
+    <string name="discovery_searching">Buscando navegadores cercanos…</string>
+    <string name="discovery_none_found">No se encontró ningún navegador Navi Moto cerca</string>
+    <string name="discovery_title">Elegí un navegador</string>
     <string name="dialog_cancel">Cancelar</string>
 
-    <string name="info_text">Primero tocá el botón 1 y activá esta app en la lista de acceso a notificaciones. Después volvé y tocá el botón 2.\n\nUna vez conectado, el reloj recibe notificaciones (WhatsApp, SMS, etc.), navegación de Google Maps, clima y control de música — y podés detener la conexión en cualquier momento desde la notificación persistente.</string>
+    <string name="info_text">Primero tocá el botón 1 y activá esta app en la lista de acceso a notificaciones. Después volvé y tocá el botón 2.\n\nUna vez conectado, el navegador recibe notificaciones (WhatsApp, SMS, etc.), navegación de Google Maps, clima y control de música — y podés detener la conexión en cualquier momento desde la notificación persistente.</string>
 
     <string name="button_notification_apps">Elegir apps de notificaciones</string>
     <string name="notification_apps_title">Notificaciones</string>
-    <string name="notification_apps_description">Elegí de qué aplicaciones querés recibir notificaciones en el reloj.</string>
+    <string name="notification_apps_description">Elegí de qué aplicaciones querés recibir notificaciones en el navegador.</string>
     <string name="notification_apps_search_hint">Buscar</string>
 
-    <string name="label_call_alerts">Mostrar llamadas entrantes en el reloj</string>
-    <string name="call_alerts_permissions_missing">Faltan permisos de teléfono y contactos para mostrar las llamadas en el reloj</string>
+    <string name="label_call_alerts">Mostrar llamadas entrantes en el navegador</string>
+    <string name="call_alerts_permissions_missing">Faltan permisos de teléfono y contactos para mostrar las llamadas en el navegador</string>
 
-    <string name="button_watch_contacts">Elegir contactos del reloj</string>
+    <string name="button_watch_contacts">Elegir contactos del navegador</string>
     <string name="watch_contacts_title">Contactos</string>
-    <string name="watch_contacts_description">Elegí los contactos que querés tener en el reloj. Tocando uno en el reloj, el teléfono lo llama.</string>
-    <string name="watch_contacts_permission_missing">Activá primero “Mostrar llamadas entrantes en el reloj” para dar permiso a los contactos</string>
+    <string name="watch_contacts_description">Elegí los contactos que querés tener en el navegador. Tocando uno en el navegador, el teléfono lo llama.</string>
+    <string name="watch_contacts_permission_missing">Activá primero “Mostrar llamadas entrantes en el navegador” para dar permiso a los contactos</string>
     <string name="watch_contacts_limit">Podés elegir hasta %1$d contactos</string>
 
-    <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
+    <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
+    <string name="share_destination_label">Ruta al navegador</string>
+    <string name="button_route_demo">Probar ruta en el navegador</string>
+    <string name="button_route_demo_stop">Detener prueba de ruta</string>
+    <string name="route_demo_not_connected">Conectá el navegador primero para probar la ruta.</string>
+    <string name="label_turn_beep">Pitido antes de cada giro</string>
+    <string name="label_street_map">Mostrar calles alrededor (modo ruta)</string>
+    <string name="widget_description">Estado del navegador, conectar, detener la ruta, pitido y calles</string>
+    <string name="widget_status_stopped">Detenido</string>
+    <string name="widget_status_searching">Buscando el navegador…</string>
+    <string name="widget_status_connecting">Conectando…</string>
+    <string name="widget_status_connected">Conectado</string>
+    <string name="widget_status_route">En ruta · faltan %1$s</string>
+    <string name="widget_status_demo">Ruta de prueba</string>
+    <string name="widget_btn_connect">Conectar</string>
+    <string name="widget_btn_stop">Detener ruta</string>
+    <string name="widget_btn_open">Abrir</string>
+    <string name="widget_beep">Pitido</string>
+    <string name="widget_streets">Calles</string>
+    <string name="street_cache_info">Calles guardadas en el teléfono: %1$s (%2$d cuadrantes). Cada ruta guarda las suyas y se reutilizan en las siguientes, sin internet. Sobre 50 MB se borran solas las que llevan más tiempo sin usarse.</string>
+    <string name="button_street_clear">Borrar calles guardadas</string>
+    <string name="street_clear_title">Borrar calles guardadas</string>
+    <string name="street_clear_msg">Se borrarán %1$s de calles guardadas. Se volverán a descargar cuando una ruta las necesite.</string>
+    <string name="street_clear_yes">Borrar</string>
+    <string name="route_streets_progress">Guardando las calles de la ruta: %1$d de %2$d cuadrantes…</string>
+    <string name="route_streets_done">Calles de toda la ruta guardadas en el teléfono.</string>
+    <string name="route_streets_cached">Calles de la ruta: ya estaban guardadas.</string>
+    <string name="route_streets_failed">No se pudieron guardar todas las calles de la ruta; en el camino se completan con conexión.</string>
+    <string name="button_route_stop">Detener ruta en el navegador</string>
+    <string name="route_start">Iniciar en el navegador</string>
+    <string name="route_cancel">Cancelar</string>
+    <string name="route_started">Ruta enviada al navegador</string>
+    <string name="route_status_resolving">Buscando el lugar compartido desde Google Maps…</string>
+    <string name="route_status_locating">Buscando tu ubicación…</string>
+    <string name="route_status_locating_acc">Buscando tu ubicación… (precisión %1$d m)</string>
+    <string name="route_status_routing">Calculando la ruta…</string>
+    <string name="route_status_ready">Ruta lista</string>
+    <string name="route_avoid_highways">Evitar autopistas</string>
+    <string name="route_avoid_tolls">Evitar peajes (TAG)</string>
+    <string name="route_note_toll">Esta ruta pasa por peajes (TAG).</string>
+    <string name="route_note_toll_unavoidable">No se pudieron evitar todos los peajes: no hay otro camino razonable.</string>
+    <string name="route_note_highway_unavoidable">No se pudieron evitar todas las autopistas: no hay otro camino razonable.</string>
+    <string name="route_note_fallback">El servidor de rutas principal no respondió; se usó el de respaldo, que no aplica tus preferencias de autopistas ni peajes.</string>
+    <string name="route_note_no_traffic">El tiempo es sin tráfico: en la práctica suele ser mayor.</string>
+    <string name="route_note_first">Primer giro en %1$s: %2$s</string>
+    <string name="route_note_approximate">El destino se buscó por nombre a partir de Google Maps. Revisa que sea el lugar correcto; para destinos exactos, comparte desde CoMaps.</string>
+    <string name="route_note_far_from_road">Tu ubicación quedó a %1$d m del camino más cercano. Si estás bajo techo, la ruta puede empezar en otra calle.</string>
+    <string name="route_err_no_destination">No encontré un destino en lo compartido. Comparte un lugar desde CoMaps o Google Maps.</string>
+    <string name="route_err_google">No pude obtener la ubicación del lugar de Google Maps. Prueba compartiéndolo desde CoMaps.</string>
+    <string name="route_err_precise_location">Necesito la ubicación precisa para dibujar el camino desde donde estás. Actívala en Ajustes → Apps → Navi Moto → Ubicación → Usar ubicación precisa.</string>
+    <string name="route_err_no_fix">No pude obtener tu ubicación. Revisa que el GPS esté activado e inténtalo de nuevo.</string>
+    <string name="route_err_network">No pude conectar con el servidor de rutas. Revisa la conexión a internet.</string>
     <string name="nav_stop_failed">No se pudo salir de la navegación: no hay una navegación de Google Maps activa en el celular.</string>
-    <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el reloj” para concederlo.</string>
+    <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
 </resources>

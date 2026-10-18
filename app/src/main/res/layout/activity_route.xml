@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/share_destination_label"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
+
+        <TextView
+            android:id="@+id/routeDestination"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textAppearance="?attr/textAppearanceSubtitle1" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/routeAvoidHighways"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/route_avoid_highways" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/routeAvoidTolls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/route_avoid_tolls" />
+
+        <TextView
+            android:id="@+id/routeStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textAppearance="?attr/textAppearanceBody1" />
+
+        <TextView
+            android:id="@+id/routeSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textAppearance="?attr/textAppearanceHeadline5"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/routeNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="?attr/textAppearanceBody2"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/routeStreets"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textAppearance="?attr/textAppearanceCaption"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/routeStartButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/route_start"
+            android:visibility="gone"
+            app:cornerRadius="14dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/routeCancelButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/route_cancel" />
+    </LinearLayout>
+</ScrollView>

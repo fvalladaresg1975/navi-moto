@@ -1,6 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Release signing key, kept out of git (see keystore/ in .gitignore). Android only accepts
+// an update signed with the same key as the installed app, so this folder must be backed
+// up: losing it means uninstalling (and reconfiguring) on every phone.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -8,16 +18,38 @@ android {
     compileSdk = 34
 
     defaultConfig {
+        // Never change: Android would install it as a different app and every setting
+        // (paired board, contacts, chosen apps) would be lost.
         applicationId = "org.chronoscompanion.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 5
+        versionName = "1.3"
+    }
+
+    signingConfigs {
+        if (keystoreProps.containsKey("storeFile")) {
+            create("release") {
+                storeFile = rootProject.file("keystore/" + keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        val releaseKey = signingConfigs.findByName("release")
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = releaseKey
+        }
+        debug {
+            // Same key as release, so a debug build can be installed over a release one
+            // (and back) without uninstalling.
+            if (releaseKey != null) signingConfig = releaseKey
         }
     }
 

@@ -1,46 +1,50 @@
-# Chronos Companion
+# Navi Moto
 
-A from-scratch Android companion app for smartwatches running [fbiego's ChronosESP32](https://github.com/fbiego/chronos-esp32) firmware (or a compatible fork), built as an open-source alternative to the official closed-source Chronos app.
+App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED 1.75** montada en el manillar en un **navegador para moto**, al estilo Beeline / BaRing. Trabaja junto al firmware de la placa: **[navi-moto-firmware](https://github.com/fvalladaresg1975/navi-moto-firmware)**.
 
-It talks to the watch over Bluetooth Low Energy using the same protocol the ChronosESP32 firmware library expects, reverse-engineered from the firmware's own receive-side parsing code (no official protocol documentation exists).
+Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xC7) que el firmware decodifica sin modificar la librería.
 
-## Features
+## Funciones
 
-- **Notifications** — forwards WhatsApp, SMS, Gmail, Telegram, and other app notifications to the watch.
-- **Google Maps navigation** — sends turn-by-turn directions and the maneuver icon while navigating.
-- **Music control** — play/pause/next/previous/volume from the watch, dispatched to whichever app is currently playing media.
-- **Weather** — current conditions + 7-day forecast, high/low, UV index, pressure, and city name, fetched from [Open-Meteo](https://open-meteo.com/) (free, no API key) using the phone's location.
-- **Time sync** — keeps the watch's clock accurate.
-- **Device management** — scan for nearby compatible watches, switch between multiple boards, or forget the current one.
-- A persistent notification with a **Stop** action to end the BLE connection on demand.
+- **Modo ruta** — comparte un destino desde CoMaps o Google Maps ("Ruta al navegador"): la app calcula la ruta con [Valhalla](https://valhalla1.openstreetmap.de) (perfil moto, evitar autopistas/peajes; OSRM de respaldo) y la placa dibuja el camino por delante, con flecha y distancia del próximo giro, voz en español, pitido antes de cada giro, recálculo al salirse de la ruta y estimación de avance en túneles.
+- **Calles alrededor** — calles de OpenStreetMap ([Overpass](https://overpass-api.de)) dibujadas tenues bajo la ruta. Las de toda la ruta se guardan en el teléfono al compartirla (cuadrantes de ~1 km, reutilizados en rutas siguientes y sin internet, límite automático de 50 MB).
+- **Zoom según la velocidad** — cerca en ciudad, lejos en carretera.
+- **Velocidad y límite** — velocidad GPS y límite de la vía (OpenStreetMap; 50 km/h en calles residenciales sin dato), con aviso rojo al excederlo.
+- **Navegación de Google Maps** — reenvía las indicaciones y la flecha de Maps, con velocidad y límite.
+- **Notificaciones, llamadas y contactos** — WhatsApp, SMS, etc.; contestar/rechazar y llamar desde la placa.
+- **Música, clima (Open-Meteo) y hora**.
+- **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido y calles.
 
-## Requirements
+## Requisitos
 
-- A watch running ChronosESP32-based firmware (tested against a custom fork targeting a Waveshare ESP32-S3-Touch-AMOLED-1.75).
-- Android 8.0 (API 26) or later.
+- La placa con el firmware [navi-moto-firmware](https://github.com/fvalladaresg1975/navi-moto-firmware).
+- Android 8.0 (API 26) o superior.
 
-## Building
+## Compilar
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-The debug APK is written to `app/build/outputs/apk/debug/`. Open the project in Android Studio, or install directly via `adb install -r app/build/outputs/apk/debug/app-debug.apk` with a device connected.
+El APK queda en `app/build/outputs/apk/debug/`. La versión release (`assembleRelease`) se firma con la clave de `keystore/keystore.properties`, que no está en el repositorio: sin ella se compila igual la versión debug.
 
-## Permissions
+## Permisos
 
-| Permission | Why |
+| Permiso | Para qué |
 |---|---|
-| Bluetooth (scan/connect) | Talk to the watch over BLE. |
-| Notification access | Read notifications from other apps to forward to the watch. |
-| Coarse location | Fetch weather for the phone's current location. |
-| Foreground service | Keep the BLE connection alive while backgrounded. |
-| Internet | Fetch weather data. |
+| Bluetooth (buscar/conectar) | Hablar con la placa. |
+| Acceso a notificaciones | Reenviar notificaciones y leer la navegación de Google Maps. |
+| Ubicación precisa | Seguir la ruta, velocidad, clima. |
+| Teléfono y contactos (opcional) | Mostrar y contestar llamadas, llamar desde la placa. |
+| Servicio en primer plano | Mantener la conexión y el GPS con la pantalla apagada. |
+| Internet | Rutas, calles, límites y clima. |
 
-No data leaves the phone except weather requests to Open-Meteo (by coordinates) and reverse-geocoding via Android's built-in `Geocoder`.
+## Privacidad
 
-## License
+No hay cuentas ni servidores propios. Salen del teléfono solo estas consultas: coordenadas de origen/destino a Valhalla (u OSRM) para la ruta y los límites; la zona de la ruta a Overpass para las calles; el nombre del destino a Nominatim cuando viene de Google Maps sin coordenadas; las coordenadas a Open-Meteo para el clima. Todos son servicios públicos de OpenStreetMap/Open-Meteo.
 
-MIT — see [LICENSE](LICENSE).
+## Licencia
 
-This project is not affiliated with or endorsed by fbiego/ChronosESP32 or the official Chronos app.
+MIT — ver [LICENSE](LICENSE). Datos de mapas © colaboradores de OpenStreetMap (ODbL).
+
+Proyecto personal, sin relación con fbiego/ChronosESP32 ni con la app oficial de Chronos.

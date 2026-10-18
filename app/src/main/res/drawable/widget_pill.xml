@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's main action, in the watch UI's amber accent. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFC24D" />
+    <corners android:radius="16dp" />
+</shape>

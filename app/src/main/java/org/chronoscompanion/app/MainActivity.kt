@@ -19,14 +19,25 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.switchmaterial.SwitchMaterial
 import org.chronoscompanion.app.ble.ChronosBleService
+import org.chronoscompanion.app.route.StreetTiles
 import org.chronoscompanion.app.telephony.CallAlertsPrefs
+import org.chronoscompanion.app.widget.NaviWidget
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        /** Sent by the home-screen widget's "Conectar". */
+        const val ACTION_WIDGET_CONNECT = "org.chronoscompanion.app.WIDGET_CONNECT"
+    }
+
+    private lateinit var turnBeepSwitch: SwitchMaterial
+    private lateinit var streetMapSwitch: SwitchMaterial
 
     private lateinit var statusText: TextView
     private lateinit var deviceNameText: TextView
     private lateinit var statusDot: View
     private lateinit var callAlertsSwitch: SwitchMaterial
+    private lateinit var routeDemoButton: MaterialButton
 
     /** Permissions the incoming-call feature needs: read the ringing state and number,
      * resolve it against contacts, and answer/decline from the watch. */
@@ -96,6 +107,35 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.watchContactsButton).setOnClickListener {
             startActivity(Intent(this, WatchContactsActivity::class.java))
         }
+        routeDemoButton = findViewById(R.id.routeDemoButton)
+        routeDemoButton.setOnClickListener {
+            val service = ChronosBleService.instance ?: return@setOnClickListener
+            when {
+                service.isRouteActive -> service.stopRoute()
+                service.isRouteDemoRunning -> service.stopRouteDemo()
+                else -> service.startRouteDemo()
+            }
+            refreshRouteButton()
+        }
+
+        turnBeepSwitch = findViewById<SwitchMaterial>(R.id.turnBeepSwitch).apply {
+            isChecked = org.chronoscompanion.app.route.TurnBeepPrefs.isEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                org.chronoscompanion.app.route.TurnBeepPrefs.setEnabled(this@MainActivity, on)
+                NaviWidget.update(this@MainActivity)
+            }
+        }
+
+        streetMapSwitch = findViewById<SwitchMaterial>(R.id.streetMapSwitch).apply {
+            isChecked = org.chronoscompanion.app.route.StreetMapPrefs.isEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                org.chronoscompanion.app.route.StreetMapPrefs.setEnabled(this@MainActivity, on)
+                ChronosBleService.instance?.onStreetMapToggled(on)
+                NaviWidget.update(this@MainActivity)
+            }
+        }
+        streetCacheText = findViewById(R.id.streetCacheText)
+        findViewById<MaterialButton>(R.id.streetClearButton).setOnClickListener { askClearStreets() }
 
         callAlertsSwitch = findViewById(R.id.callAlertsSwitch)
         callAlertsSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -122,10 +162,70 @@ class MainActivity : AppCompatActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(statusReceiver, filter)
         }
+        handleWidgetIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleWidgetIntent(intent)
+    }
+
+    /** The widget's "Conectar": connect exactly as the button here does (permissions
+     * included), from the now-visible app. */
+    private fun handleWidgetIntent(intent: Intent?) {
+        if (intent?.action != ACTION_WIDGET_CONNECT) return
+        intent.action = null // a rotation / recreation must not connect again
+        requestPermissionsAndStart()
+    }
+
+    /** One button for both route things: stops whichever is running (a real route sent
+     * from "Ruta al navegador", or the demo), otherwise starts the demo. Refreshed on resume
+     * because a route is usually started from the share screen, not from here. */
+    private fun refreshRouteButton() {
+        val service = ChronosBleService.instance
+        routeDemoButton.setText(
+            when {
+                service?.isRouteActive == true -> R.string.button_route_stop
+                service?.isRouteDemoRunning == true -> R.string.button_route_demo_stop
+                else -> R.string.button_route_demo
+            }
+        )
+    }
+
+    // --- Street cache (filled by each route's download, see StreetPrefetch) ----------
+    private lateinit var streetCacheText: TextView
+
+    private fun showStreetCache() {
+        val (tiles, bytes) = StreetTiles.stats(this)
+        streetCacheText.text = getString(R.string.street_cache_info,
+            android.text.format.Formatter.formatShortFileSize(this, bytes), tiles)
+    }
+
+    /** The cache trims itself at 50 MB (least recently used first); this is the manual way. */
+    private fun askClearStreets() {
+        val (_, bytes) = StreetTiles.stats(this)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.street_clear_title)
+            .setMessage(getString(R.string.street_clear_msg,
+                android.text.format.Formatter.formatShortFileSize(this, bytes)))
+            .setPositiveButton(R.string.street_clear_yes) { _, _ ->
+                Thread {
+                    StreetTiles.clear(applicationContext)
+                    runOnUiThread { if (!isDestroyed) showStreetCache() }
+                }.start()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshRouteButton()
+        showStreetCache()
+        // The widget can flip these while the app is in the background.
+        turnBeepSwitch.isChecked = org.chronoscompanion.app.route.TurnBeepPrefs.isEnabled(this)
+        streetMapSwitch.isChecked = org.chronoscompanion.app.route.StreetMapPrefs.isEnabled(this)
+        NaviWidget.update(this)
         // The service keeps running (and stays connected) across the activity being
         // closed and reopened - it only reacts to NEW state-change broadcasts, so
         // reopening the app showed the hardcoded "sin iniciar" text forever even while
@@ -134,9 +234,9 @@ class MainActivity : AppCompatActivity() {
         // ChronosBleService.status is a companion-object var that defaults to
         // DISCONNECTED and is never reset - if the OS killed the whole app process
         // (this phone's battery manager does that aggressively) and the service never
-        // got a chance to restart, that stale default reads as "Buscando el reloj..."
+        // got a chance to restart, that stale default reads as "Buscando el navegador..."
         // even though nothing is actually running, which is misleading (and confusing
-        // together with "Cambiar de reloj" correctly refusing to work). Show a distinct
+        // together with "Cambiar de navegador" correctly refusing to work). Show a distinct
         // "stopped" state instead whenever there's no live service instance.
         if (ChronosBleService.instance == null) {
             statusText.text = getString(R.string.status_prefix) + "Detenido"
@@ -166,8 +266,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyStatus(status: ChronosBleService.Status) {
         val (label, colorRes) = when (status) {
-            ChronosBleService.Status.DISCONNECTED -> getString(R.string.status_prefix) + "Buscando el reloj…" to R.color.status_disconnected
-            ChronosBleService.Status.SCANNING -> getString(R.string.status_prefix) + "Buscando el reloj…" to R.color.status_connecting
+            ChronosBleService.Status.DISCONNECTED -> getString(R.string.status_prefix) + "Buscando el navegador…" to R.color.status_disconnected
+            ChronosBleService.Status.SCANNING -> getString(R.string.status_prefix) + "Buscando el navegador…" to R.color.status_connecting
             ChronosBleService.Status.CONNECTING -> getString(R.string.status_prefix) + "Conectando…" to R.color.status_connecting
             ChronosBleService.Status.CONNECTED -> getString(R.string.status_prefix) + "Conectado" to R.color.status_connected
         }
@@ -263,7 +363,7 @@ class MainActivity : AppCompatActivity() {
     private fun confirmForgetDevice() {
         AlertDialog.Builder(this)
             .setTitle(R.string.button_forget_device)
-            .setMessage("Se cortará la conexión actual y vas a tener que elegir un reloj de nuevo.")
+            .setMessage("Se cortará la conexión actual y vas a tener que elegir un navegador de nuevo.")
             .setPositiveButton(R.string.button_forget_device) { _, _ ->
                 ChronosBleService.instance?.forgetDevice()
                 applyDeviceName(null)

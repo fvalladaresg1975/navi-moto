@@ -51,6 +51,24 @@ import org.chronoscompanion.app.telephony.CallAlertsPrefs
 import org.chronoscompanion.app.telephony.CallerLookup
 import org.chronoscompanion.app.telephony.WatchContactsPrefs
 import org.chronoscompanion.app.weather.WeatherFetcher
+import org.chronoscompanion.app.route.RouteDemo
+import org.chronoscompanion.app.route.Route
+import org.chronoscompanion.app.route.RouteFormat
+import org.chronoscompanion.app.route.RouteIcons
+import org.chronoscompanion.app.route.RouteTracker
+import org.chronoscompanion.app.route.RouteVoice
+import org.chronoscompanion.app.route.TurnBeeper
+import org.chronoscompanion.app.route.TurnBeepPrefs
+import org.chronoscompanion.app.route.StreetTiles
+import org.chronoscompanion.app.route.Polyline
+import org.chronoscompanion.app.route.StreetMap
+import org.chronoscompanion.app.route.StreetMapPrefs
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
 
 /**
  * Foreground service owning the single BLE connection to the watch (ChronosESP32
@@ -81,6 +99,59 @@ class ChronosBleService : Service() {
         private const val KIND_OTHER = 0
         private const val KIND_NAV_DATA = 1
         private const val KIND_NAV_ICON = 2
+        private const val KIND_ROUTE = 3
+        private const val KIND_SPEED = 4
+        /** Street-layer packets: background filler, sent behind everything else. */
+        private const val KIND_STREETS = 5
+
+        // Street layer (route mode). See StreetMap / ChronosProtocol.buildStreets.
+        /** The next corridor stretch (StreetMap.WINDOW_M) is loaded this far before the
+         * end of the covered one - from the phone's tile cache, and whatever is missing
+         * from Overpass (then saved to the cache): ~2.5 min of margin at 120 km/h against
+         * ~40 s for Overpass to answer. The user asked for the cache to keep filling ahead
+         * of the rider this way. */
+        private const val STREETS_REFETCH_BEFORE_M = 5000.0
+        private const val STREETS_RETRY_MS = 60000L
+        private const val STREETS_PENDING_RETRY_MS = 5000L
+        /** Streets sent once they come this close (the view reaches ~500 m ahead). */
+        private const val STREETS_SEND_RADIUS_M = 900.0
+        /** What the watch can hold (firmware: 8000 points / 2000 pieces), with a margin. */
+        private const val STREETS_WATCH_MAX_POINTS = 7000
+        private const val STREETS_WATCH_MAX_PIECES = 1800
+        /** Street packets waiting in the queue at once: enough to fill the view in a few
+         * seconds, few enough that the queue never piles up behind a slow link. */
+        private const val STREETS_MAX_PENDING = 3
+        /** Route view zoom: fully zoomed in at or below the first speed, fully out at or
+         * above the second, in between proportionally. */
+        private const val ZOOM_CLOSE_KMH = 30.0
+        private const val ZOOM_FAR_KMH = 90.0
+        /** Google Maps mode: re-check the posted limit this often while moving... */
+        private const val MAPS_LIMIT_EVERY_MS = 12000L
+        /** ...or this soon after a turn, which is when the road (and limit) changes. */
+        private const val MAPS_LIMIT_AFTER_TURN_MS = 3000L
+
+        /** Per-chunk hex dump of every BLE write. Off: in route mode that is ~16 log lines a
+         * second, which made logd prune this app's other lines (the route computation's log
+         * was lost to it on the phase-2a test) and is wasted work on a multi-hour ride.
+         * Flip on only to debug the wire format. */
+        private const val LOG_WIRE = false
+        /** Arrived: stay on "Llegada a destino" this long, then end route mode by itself. */
+        private const val ARRIVAL_HOLD_MS = 15000L
+        private const val ARRIVAL_RADIUS_M = 30.0
+        /** Off the route (or riding it the wrong way) this long before rerouting: rides
+         * through one bad fix, catches a wrong turn within a block. */
+        private const val OFF_ROUTE_MS = 5000L
+        /** A fix worse than this can't tell "off the route" from "GPS is bad here". */
+        private const val REROUTE_MAX_ACCURACY_M = 50f
+        /** At most one reroute this often - fair use of the public router, and no
+         * thrashing while the rider is still deciding which street to take. */
+        private const val REROUTE_MIN_GAP_MS = 10000L
+        /** No fix (tunnel): keep advancing for at most this long. The Zapata tunnel on Ruta
+         * 68 takes well under a minute; beyond 90 s an estimate is worse than a frozen view. */
+        private const val DEAD_RECKON_MAX_MS = 90000L
+        /** Advance at this share of the last speed: undershooting is safe because s only
+         * moves forward and the returning fix pulls it ahead; overshooting can't be undone. */
+        private const val DEAD_RECKON_FACTOR = 0.9
 
         const val ACTION_STATUS_CHANGED = "org.chronoscompanion.app.STATUS_CHANGED"
         const val EXTRA_STATUS = "status"
@@ -189,6 +260,10 @@ class ChronosBleService : Service() {
     }
 
     override fun onDestroy() {
+        turnBeeper.release()
+        stopMapsSpeed(sendHide = false)
+        stopRouteDemo()
+        stopRoute()
         stopTimeSyncTimer()
         stopWeatherTimer()
         stopMusicStateTimer()
@@ -199,7 +274,7 @@ class ChronosBleService : Service() {
         instance = null
         status = Status.DISCONNECTED
         broadcastStatus()
-        // setStatus()'s updateNotification() re-posts the ongoing "Buscando el reloj…"
+        // setStatus()'s updateNotification() re-posts the ongoing "Buscando el navegador…"
         // notification, which is right for a live reconnect-retry but wrong here: the
         // service is being torn down (e.g. the user tapped "Detener"), so re-posting it
         // orphans an ongoing, un-dismissable notification that never goes away once the
@@ -216,6 +291,7 @@ class ChronosBleService : Service() {
         i.putExtra(EXTRA_STATUS, status.name)
         i.putExtra(EXTRA_DEVICE_NAME, prefs().getString(PREF_DEVICE_NAME, null))
         sendBroadcast(i)
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
 
     private fun setStatus(s: Status) {
@@ -271,7 +347,7 @@ class ChronosBleService : Service() {
         if (adapter == null || scanner == null) {
             // adapter.bluetoothLeScanner returns null when Bluetooth is off or the
             // stack is mid-restart. This used to just bail out here forever - status
-            // stayed on DISCONNECTED/"Buscando el reloj..." with nothing left to ever
+            // stayed on DISCONNECTED/"Buscando el navegador..." with nothing left to ever
             // retry, so a transient BT hiccup meant the app never reconnected again
             // until manually force-stopped. Retry instead of giving up.
             Log.w(TAG, "startScan: BluetoothLeScanner unavailable, retrying in 3s")
@@ -307,7 +383,7 @@ class ChronosBleService : Service() {
                     // First-time connect with nothing remembered yet - adopt whatever
                     // Chronos-compatible device answered first, same as before this
                     // feature existed. From now on reconnects target this specific one.
-                    saveDevice(result.device.address, result.device.name ?: "Reloj Chronos")
+                    saveDevice(result.device.address, result.device.name ?: "Navegador Navi Moto")
                 }
                 connect(result.device)
             }
@@ -331,7 +407,7 @@ class ChronosBleService : Service() {
 
     /**
      * Scans for [DISCOVERY_DURATION_MS] collecting every nearby device advertising the
-     * Chronos UART service (not just the remembered one), for the "Cambiar de reloj"
+     * Chronos UART service (not just the remembered one), for the "Cambiar de navegador"
      * picker. Interrupts whatever scan was running and resumes normal reconnect
      * scanning afterwards if still disconnected.
      */
@@ -349,7 +425,7 @@ class ChronosBleService : Service() {
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val name = result.device.name ?: "Reloj Chronos"
+                val name = result.device.name ?: "Navegador Navi Moto"
                 found[result.device.address] = DiscoveredDevice(name, result.device.address)
             }
 
@@ -423,6 +499,11 @@ class ChronosBleService : Service() {
                 writeQueue.clear()
                 writeInFlight = false
                 resetNavState()
+                // The watch may reboot before the next connection: assume it holds no
+                // streets, and start the next street upload with a clear in case it does.
+                sentStreetIds.clear()
+                sentStreetPts = 0
+                streetsNeedClear = true
                 weatherSentThisConnection = false
                 sessionStarted = false
                 stopTimeSyncTimer()
@@ -499,7 +580,7 @@ class ChronosBleService : Service() {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.e(TAG, "Write failed: status=$status")
             } else {
-                Log.i(TAG, "Write OK (${writeQueue.size} chunk(s) still queued)")
+                if (LOG_WIRE) Log.i(TAG, "Write OK (${writeQueue.size} chunk(s) still queued)")
             }
             drainQueue()
         }
@@ -767,6 +848,13 @@ class ChronosBleService : Service() {
      * uses. One source of truth (Maps), no state to keep in sync.
      */
     private fun stopNavigationFromWatch() {
+        // The watch's "Salir" ends whichever navigation is driving it: our own route (or
+        // the demo) if one is active, otherwise Google Maps.
+        if (isRouteActive || isRouteDemoRunning) {
+            stopRoute()
+            stopRouteDemo()
+            return
+        }
         val listener = ChronosNotificationListener.instance
         if (listener == null) {
             Log.w(TAG, "NAVIGATION_STOP: notification listener not connected")
@@ -833,7 +921,7 @@ class ChronosBleService : Service() {
         startedGroup = next.group
         writeInFlight = true
         val myGeneration = ++writeGeneration
-        Log.i(TAG, "Writing ${next.bytes.size} bytes: ${next.bytes.joinToString(" ") { "%02x".format(it) }}")
+        if (LOG_WIRE) Log.i(TAG, "Writing ${next.bytes.size} bytes: ${next.bytes.joinToString(" ") { "%02x".format(it) }}")
         // onCharacteristicWrite occasionally never arrives after a stop/reconnect cycle
         // (observed: BLE stays "connected" but the watch's write ack callback is lost),
         // which used to leave writeInFlight stuck true forever - every future packet
@@ -878,7 +966,20 @@ class ChronosBleService : Service() {
 
     private fun enqueuePacket(logicalPacket: ByteArray, kind: Int = KIND_OTHER) {
         val group = ++nextGroupId
-        ChronosProtocol.chunk(logicalPacket).forEach { writeQueue.add(Chunk(it, kind, group)) }
+        val chunks = ChronosProtocol.chunk(logicalPacket).map { Chunk(it, kind, group) }
+        val waitingStreets: (Chunk) -> Boolean = { it.kind == KIND_STREETS && it.group != startedGroup }
+        if (kind != KIND_STREETS && writeQueue.any(waitingStreets)) {
+            // Street packets are background filler: everything else goes in front of the
+            // ones that haven't started, so they never add latency to navigation. Whole
+            // packets only - the watch reassembles a packet from consecutive chunks, so the
+            // one already on the air keeps its place.
+            val held = writeQueue.filter(waitingStreets)
+            writeQueue.removeAll(waitingStreets)
+            writeQueue.addAll(chunks)
+            writeQueue.addAll(held)
+        } else {
+            writeQueue.addAll(chunks)
+        }
         mainHandler.post { drainQueue() }
     }
 
@@ -936,6 +1037,687 @@ class ChronosBleService : Service() {
             coalesce(KIND_NAV_DATA)
         }
         enqueuePacket(packet, KIND_NAV_DATA)
+    }
+
+    // ---------------------------------------------------------------------
+    // Route mode (0xC5). See ChronosProtocol.buildRouteFrame for the format.
+    // ---------------------------------------------------------------------
+
+    /** One rider-relative polyline frame. A newer frame always replaces a queued older one -
+     * a stale view of the road is worse than none, same reasoning as nav-data coalescing. */
+    fun sendRouteFrame(points: List<Pair<Int, Int>>, speedKmh: Int? = null, limitKmh: Int? = null,
+                       pose: ChronosProtocol.RiderPose? = null) {
+        coalesce(KIND_ROUTE)
+        enqueuePacket(ChronosProtocol.buildRouteFrame(points, speedKmh, limitKmh, pose), KIND_ROUTE)
+    }
+
+    fun sendRouteClear() {
+        coalesce(KIND_ROUTE)
+        enqueuePacket(ChronosProtocol.buildRouteClear(), KIND_ROUTE)
+    }
+
+    // --- PHASE 1 demo: drive a made-up road once, ~70 s, to judge the watch view -------
+    private var routeDemo: RouteDemo? = null
+    private var routeDemoS = 0.0
+
+    val isRouteDemoRunning: Boolean get() = routeDemo != null
+
+    private val routeDemoRunnable = object : Runnable {
+        override fun run() {
+            val demo = routeDemo ?: return
+            if (status != Status.CONNECTED) {
+                // Link dropped mid-demo: stop quietly. Queuing a clear for a watch that is
+                // not there would only deliver a stale "stop" after the next reconnect.
+                routeDemo = null
+                return
+            }
+            if (routeDemoS >= demo.lengthM - 20) {
+                stopRouteDemo()
+                return
+            }
+            val m = demo.nextManeuver(routeDemoS)
+            // Turn info rides the EXISTING nav path, so the ring, hero distance and icon all
+            // behave exactly as with Maps. Data before icon - see handleMapsNotification.
+            // `distance` is deliberately not a parsable figure: the watch's trip tracker sums
+            // decreases of that field, and a demo must never overwrite the user's real last
+            // trip in the Viaje app.
+            val bits = demo.iconBits(m.glyph)
+            val crc = ChronosProtocol.crc32Of(bits)
+            sendNavigationData(
+                title = demo.distanceText(m.atM - routeDemoS),
+                duration = "Prueba",
+                distance = "demo",
+                eta = "Ruta",
+                directions = m.text,
+                speed = "",
+                hasIcon = true,
+                iconCrc = crc
+            )
+            sendNavigationIcon(bits, crc)
+            // Speed/limit so the demo shows the whole BaRing-style screen at home, including
+            // the over-speed glow: 58 km/h against a 50 limit between the two bends.
+            val demoSpeed = if (routeDemoS in 150.0..330.0) 58 else 40
+            sendRouteFrame(demo.frameAt(routeDemoS), speedKmh = demoSpeed, limitKmh = 50)
+            // The turn beep too, so it can be heard at home without a ride.
+            turnBeeper.update("d:${m.atM}", m.atM - routeDemoS, RouteDemo.SPEED_M_S,
+                m.glyph == RouteIcons.Glyph.ARRIVE, TurnBeepPrefs.isEnabled(this@ChronosBleService))
+            routeDemoS += RouteDemo.SPEED_M_S * RouteDemo.TICK_MS / 1000.0
+            mainHandler.postDelayed(this, RouteDemo.TICK_MS)
+        }
+    }
+
+    fun startRouteDemo() {
+        if (status != Status.CONNECTED) {
+            toast(R.string.route_demo_not_connected)
+            return
+        }
+        stopRoute()
+        stopRouteDemo()
+        routeDemo = RouteDemo()
+        routeDemoS = 0.0
+        mainHandler.post(routeDemoRunnable)
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
+    }
+
+    fun stopRouteDemo() {
+        if (routeDemo == null) return
+        routeDemo = null
+        turnBeeper.reset()
+        mainHandler.removeCallbacks(routeDemoRunnable)
+        sendRouteClear()
+        sendNavigationStop()
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
+    }
+
+    // --- Real route: GPS-tracked (phase 2b). Reroute / tunnels / GPS loss: phase 3 -------
+    private var activeRoute: Route? = null
+    private var tracker: RouteTracker? = null
+    private var voice: RouteVoice? = null
+    /** Rider's position along the route, metres of arclength. */
+    private var routeS = 0.0
+    /** Rider's speed from the last GPS fix, km/h; null until a fix reports one. */
+    private var routeSpeedKmh: Int? = null
+    private var lastRouteSendMs = 0L
+    private var arrivedAtMs = 0L
+    // Phase 3: reroute + GPS loss
+    private var routeDest: org.chronoscompanion.app.route.Destination? = null
+    private var routePrefs = org.chronoscompanion.app.route.RoutePrefs(false, false)
+    private var offRouteSinceMs = 0L
+    private var rerouting = false
+    private var lastRerouteAtMs = 0L
+    /** Bumped on every reroute request and on stop: a late answer for an older request
+     * (or for a route that was stopped) is ignored. */
+    private var rerouteGen = 0
+    private var rerouteProblemSaid = false
+    private var lastFixAtMs = 0L
+    private var lastDeadReckonMs = 0L
+    private var lastSpeedMps = 0.0
+    private val routeWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    // Street layer: OSM streets around the route, uploaded to the watch in the background.
+    // One StreetMap per trip (survives reroutes); see StreetMap for the frame.
+    private var streetMap: StreetMap? = null
+    /** The route [streetsCoveredUntil] refers to - a reroute starts coverage over. */
+    private var streetsRoute: Route? = null
+    private var streetsCoveredUntil = 0.0
+    private var streetsFetching = false
+    /** No new attempt to load streets before this (elapsedRealtime); 0 = any time. */
+    private var streetsRetryAtMs = 0L
+    /** What the watch holds, as far as this side knows. */
+    private val sentStreetIds = HashSet<Long>()
+    private var sentStreetPts = 0
+    private var streetsNeedClear = true
+    private val streetWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    /** Route view zoom, px/m: close in town, far on the open road (see updateRouteScale). */
+    private var routeScale = Polyline.SCALE_MAX_PX_PER_M
+
+    /** Speed-dependent zoom, as car navigators do: at town speeds the next junctions fill
+     * the screen; at road speeds it backs out to show ~470 m ahead, about 17 s at 100
+     * km/h. Eased (at most 0.05 px/m per frame, ~12 s end to end) so a stop at a light or
+     * a GPS speed blip doesn't make the view jump. Unknown speed (tunnel estimate) keeps
+     * the zoom it has. */
+    private fun updateRouteScale() {
+        val v = routeSpeedKmh?.toDouble() ?: return
+        val t = ((v - ZOOM_CLOSE_KMH) / (ZOOM_FAR_KMH - ZOOM_CLOSE_KMH)).coerceIn(0.0, 1.0)
+        val target = Polyline.SCALE_MAX_PX_PER_M + (Polyline.SCALE_PX_PER_M - Polyline.SCALE_MAX_PX_PER_M) * t
+        routeScale += (target - routeScale).coerceIn(-0.05, 0.05)
+    }
+
+    val isRouteActive: Boolean get() = activeRoute != null
+
+    /** Distance left on the active route, metres; null without one. For the widget. */
+    val routeRemainingM: Double? get() = activeRoute?.remainingDistanceM(routeS)
+    /** Remaining distance the widget last showed: it is redrawn every 500 m, not per fix. */
+    private var widgetRemainingM = -1.0
+
+    /** The street-layer switch in the app. Off: the watch forgets its streets now. */
+    fun onStreetMapToggled(on: Boolean) {
+        if (on || streetMap == null) return
+        coalesce(KIND_STREETS)
+        sentStreetIds.clear()
+        sentStreetPts = 0
+        streetsNeedClear = false
+        if (status == Status.CONNECTED) enqueuePacket(ChronosProtocol.buildStreetsClear(), KIND_STREETS)
+    }
+
+    /** Where the rider is drawn, in the street map's frame - the same point and heading
+     * [Polyline.frameAt] draws the route line from, so streets and route line agree. */
+    private fun riderPose(r: Route, s: Double): ChronosProtocol.RiderPose? {
+        val map = streetMap ?: return null
+        val (rx, ry) = r.road.pointAt(s)
+        val (lat, lon) = r.toLatLon(rx, ry)
+        val (mx, my) = map.toMap(lat, lon)
+        var hdg = Math.toDegrees(r.road.headingAt(s))
+        if (hdg < 0) hdg += 360.0
+        return ChronosProtocol.RiderPose(
+            (mx * 10).roundToInt(), (my * 10).roundToInt(),
+            (hdg * 100).roundToInt() % 36000, (routeScale * 100).roundToInt())
+    }
+
+    /** Fetches the next stretch of street corridor when the rider gets near the end of
+     * what is covered (or the route changed). One Overpass query per ~10 km. */
+    private fun maybeFetchStreets(r: Route, s: Double) {
+        val map = streetMap ?: return
+        if (streetsFetching || !StreetMapPrefs.isEnabled(this)) return
+        if (SystemClock.elapsedRealtime() < streetsRetryAtMs) return
+        if (streetsRoute === r &&
+            (streetsCoveredUntil >= r.road.lengthM || s < streetsCoveredUntil - STREETS_REFETCH_BEFORE_M)) return
+        val from = (s - 300.0).coerceAtLeast(0.0)
+        val to = (s + StreetMap.WINDOW_M).coerceAtMost(r.road.lengthM)
+        val path = StreetMap.corridorPath(r, from, to)
+        streetsFetching = true
+        streetWorker.execute {
+            // Cached tiles land in the map at once; missing ones after Overpass answers.
+            val outcome = StreetTiles.ensure(this, path, StreetMap.CORRIDOR_M.toDouble(), map)
+            mainHandler.post {
+                streetsFetching = false
+                if (streetMap !== map) return@post // trip ended meanwhile
+                onStreetsOutcome(r, to, outcome)
+            }
+        }
+    }
+
+    /** Main thread. Records how loading the stretch up to [to] of [r] went. */
+    private fun onStreetsOutcome(r: Route, to: Double, outcome: StreetTiles.Outcome) {
+        when (outcome) {
+            StreetTiles.Outcome.OK -> {
+                streetsRoute = r
+                streetsCoveredUntil = to
+                streetsRetryAtMs = 0L
+            }
+            // The route download is fetching some of these tiles right now: look again
+            // shortly - they come out of the cache then.
+            StreetTiles.Outcome.PENDING ->
+                streetsRetryAtMs = SystemClock.elapsedRealtime() + STREETS_PENDING_RETRY_MS
+            StreetTiles.Outcome.FAILED -> {
+                Log.w(TAG, "Streets: fetch failed, retrying in ${STREETS_RETRY_MS / 1000} s")
+                streetsRetryAtMs = SystemClock.elapsedRealtime() + STREETS_RETRY_MS
+            }
+        }
+    }
+
+    /** Queues the streets near the rider the watch doesn't have yet, nearest first, a few
+     * packets at a time. Runs after each route frame; the frame itself always goes first. */
+    private fun sendStreetsNear(x: Double, y: Double) {
+        val map = streetMap ?: return
+        if (status != Status.CONNECTED || !StreetMapPrefs.isEnabled(this)) return
+        var free = STREETS_MAX_PENDING - writeQueue.filter { it.kind == KIND_STREETS }.map { it.group }.distinct().size
+        if (free <= 0) return
+        if (streetsNeedClear) {
+            enqueuePacket(ChronosProtocol.buildStreetsClear(), KIND_STREETS)
+            sentStreetIds.clear()
+            sentStreetPts = 0
+            streetsNeedClear = false
+        }
+        val todo = map.near(x, y, STREETS_SEND_RADIUS_M, sentStreetIds)
+        val ax = x.roundToInt()
+        val ay = y.roundToInt()
+        var i = 0
+        while (free > 0 && i < todo.size) {
+            val batch = ArrayList<StreetMap.Street>()
+            var bytes = 9
+            var pts = 0
+            while (i < todo.size) {
+                val st = todo[i]
+                val fits = st.xs.indices.all { abs(st.xs[it] - ax) <= 32767 && abs(st.ys[it] - ay) <= 32767 }
+                if (!fits) { i++; continue }
+                val b = ChronosProtocol.streetBytes(st.xs.size)
+                if (bytes + b > ChronosProtocol.STREETS_MAX_PAYLOAD) break
+                batch.add(st)
+                bytes += b
+                pts += st.xs.size
+                i++
+            }
+            if (batch.isEmpty()) break
+            if (sentStreetPts + pts > STREETS_WATCH_MAX_POINTS ||
+                sentStreetIds.size + batch.size > STREETS_WATCH_MAX_PIECES) {
+                // Watch full: start over next frame with whatever is nearest by then.
+                streetsNeedClear = true
+                return
+            }
+            enqueuePacket(ChronosProtocol.buildStreets(ax, ay, batch), KIND_STREETS)
+            batch.forEach { sentStreetIds.add(it.id) }
+            sentStreetPts += pts
+            free--
+        }
+    }
+
+    /** Frames go out the moment a fix arrives (lowest latency: the GPS is the clock).
+     * This heartbeat only covers gaps - no fix for 1.5 s, or a reconnect - because the
+     * watch drops a route view that goes 5 s without a frame, so a dead phone never leaves
+     * a frozen road on screen. Frames and nav data coalesce, icons are CRC-deduplicated. */
+    private val routeRunnable = object : Runnable {
+        override fun run() {
+            val r = activeRoute ?: return
+            val now = SystemClock.elapsedRealtime()
+            if (arrivedAtMs != 0L && now - arrivedAtMs > ARRIVAL_HOLD_MS) {
+                stopRoute()
+                return
+            }
+            deadReckon(now)
+            if (status == Status.CONNECTED && now - lastRouteSendMs > 1500) {
+                sendRouteState(r, routeS)
+                lastRouteSendMs = now
+            }
+            mainHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private val routeLocationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            val r = activeRoute ?: return
+            val t = tracker ?: return
+            t.update(location)
+            routeS = t.s
+            val now = SystemClock.elapsedRealtime()
+            lastFixAtMs = now
+            lastDeadReckonMs = now
+            lastSpeedMps = if (location.hasSpeed()) location.speed.toDouble() else 0.0
+            routeSpeedKmh = if (location.hasSpeed()) (location.speed * 3.6f).toInt() else null
+            if (t.onRoute && !t.wrongWay) {
+                offRouteSinceMs = 0L
+                rerouteProblemSaid = false
+                voice?.onProgress(r, routeS, lastSpeedMps)
+                beepForRoute(r, routeS, if (location.hasSpeed()) lastSpeedMps else null)
+            } else {
+                // Off route: whatever turn was coming no longer applies.
+                turnBeeper.update(null, 0.0, null, false, false)
+                if (offRouteSinceMs == 0L) offRouteSinceMs = now
+                if (now - offRouteSinceMs >= OFF_ROUTE_MS && location.accuracy <= REROUTE_MAX_ACCURACY_M) {
+                    maybeReroute(location)
+                }
+            }
+            if (arrivedAtMs == 0L && r.road.lengthM - routeS <= ARRIVAL_RADIUS_M) {
+                arrivedAtMs = SystemClock.elapsedRealtime()
+                Log.i(TAG, "Route: arrived")
+            }
+            if (status == Status.CONNECTED) {
+                sendRouteState(r, routeS)
+                lastRouteSendMs = SystemClock.elapsedRealtime()
+            }
+        }
+        // Explicit overrides: these only gained defaults in later API levels; minSdk is 26.
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    /** Tunnel / GPS loss: keep the road moving at an estimate of the rider's progress,
+     * with the speed readout hidden so the screen admits it is estimating. */
+    private fun deadReckon(now: Long) {
+        val t = tracker ?: return
+        val r = activeRoute ?: return
+        val gap = now - lastFixAtMs
+        if (lastFixAtMs == 0L || gap < 2000 || gap > DEAD_RECKON_MAX_MS) return
+        if (offRouteSinceMs != 0L || lastSpeedMps < 1.0) return // off route or stopped: nothing to extrapolate
+        val dt = (now - lastDeadReckonMs) / 1000.0
+        lastDeadReckonMs = now
+        t.deadReckon(DEAD_RECKON_FACTOR * lastSpeedMps * dt, System.currentTimeMillis())
+        routeS = t.s
+        routeSpeedKmh = null
+        // Keep announcing on the estimate: an exit right after a tunnel still gets its call.
+        voice?.onProgress(r, routeS, lastSpeedMps)
+        beepForRoute(r, routeS, DEAD_RECKON_FACTOR * lastSpeedMps)
+        if (status == Status.CONNECTED) {
+            sendRouteState(r, routeS)
+            lastRouteSendMs = now
+        }
+    }
+
+    /** Off the route for OFF_ROUTE_MS: ask for a new route from here to the same
+     * destination, starting in the direction the rider is already moving. */
+    private fun maybeReroute(fix: Location) {
+        val dest = routeDest ?: return
+        val now = SystemClock.elapsedRealtime()
+        if (rerouting || now - lastRerouteAtMs < REROUTE_MIN_GAP_MS) return
+        rerouting = true
+        lastRerouteAtMs = now
+        val gen = ++rerouteGen
+        val prefs = routePrefs
+        val heading = if (fix.hasBearing() && fix.hasSpeed() && fix.speed > 3) fix.bearing.toDouble() else null
+        Log.i(TAG, "Route: off route ${tracker?.lateralM?.toInt()} m (wrongWay=${tracker?.wrongWay}), rerouting")
+        voice?.say("Recalculando ruta")
+        routeWorker.execute {
+            val result = runCatching {
+                org.chronoscompanion.app.route.Router.fetch(
+                    fix.latitude, fix.longitude, dest.lat, dest.lon, prefs, heading, withLimits = false)
+            }
+            mainHandler.post { onRerouteResult(gen, result) }
+        }
+    }
+
+    private fun onRerouteResult(gen: Int, result: Result<Route>) {
+        if (gen != rerouteGen || activeRoute == null) return // superseded or stopped
+        rerouting = false
+        result.onFailure { e ->
+            Log.w(TAG, "Route: reroute failed", e)
+            // Said once per off-route episode; retried on the next off-route fix after the gap.
+            if (!rerouteProblemSaid) {
+                rerouteProblemSaid = true
+                voice?.say(if (e is org.chronoscompanion.app.route.OsrmClient.RouteException)
+                    "No encontré una ruta desde aquí" else "Sin conexión para recalcular. Reintentando")
+            }
+            return
+        }
+        val newRoute = result.getOrThrow()
+        if (offRouteSinceMs == 0L) {
+            // Back on the original route while the request was out: keep it.
+            Log.i(TAG, "Route: back on route, new route discarded")
+            return
+        }
+        Log.i(TAG, "Route: rerouted, ${"%.1f".format(java.util.Locale.US, newRoute.distanceM / 1000)} km")
+        tracker?.close()
+        tracker = RouteTracker(newRoute, this, appendTrace = true)
+        activeRoute = newRoute
+        routeS = 0.0
+        offRouteSinceMs = 0L
+        arrivedAtMs = 0L
+        rerouteProblemSaid = false
+        voice?.reset()
+        turnBeeper.reset()
+        if (status == Status.CONNECTED) {
+            sendRouteState(newRoute, routeS)
+            lastRouteSendMs = SystemClock.elapsedRealtime()
+        }
+        // Limits after the swap: the rider gets the new line ~1 s sooner, the sign follows.
+        routeWorker.execute { org.chronoscompanion.app.route.ValhallaClient.attachSpeedLimits(newRoute) }
+    }
+
+    // --- Google Maps mode: current speed + posted limit (0xC6) ---------------------------
+    // Maps' notification carries neither. GPS is already on for Maps' own navigation, so
+    // listening too costs next to nothing; started on the first Maps update, stopped when
+    // its notification goes away or a route takes over.
+    private var mapsSpeedActive = false
+    /** Latest GPS speed while Google Maps navigates, for timing the turn beep there. */
+    private var mapsSpeedMps: Double? = null
+    private var mapsSpeedAtMs = 0L
+    /** Beep at the moment to turn - both modes. See TurnBeeper. */
+    private val turnBeeper by lazy { TurnBeeper(this) }
+    private val mapsFixes = ArrayDeque<Location>()
+    private var mapsLimitKmh: Int? = null
+    private var mapsLimitAtMs = 0L
+    private var mapsLimitBearing = Float.NaN
+    private var mapsLimitInFlight = false
+
+    private val mapsSpeedListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = onMapsFix(location)
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    private fun hasFineLocation() = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /** Called by the notification listener on every Google Maps navigation update. */
+    @SuppressLint("MissingPermission")
+    fun onMapsNavigationUpdate() {
+        if (mapsSpeedActive || isRouteActive || isRouteDemoRunning || !hasFineLocation()) return
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, mapsSpeedListener, Looper.getMainLooper())
+            mapsSpeedActive = true
+            Log.i(TAG, "Maps speedometer started")
+        } catch (e: Exception) {
+            // Typically: the service was restarted in the background and couldn't take the
+            // location type. Opening the app and tapping "Conectar" fixes it.
+            Log.w(TAG, "Maps speedometer: no GPS access", e)
+        }
+    }
+
+    fun onMapsNavigationStopped() {
+        stopMapsSpeed(sendHide = true)
+        turnBeeper.reset()
+    }
+
+    /**
+     * Google Maps mode, on every Maps navigation update: [title] = distance to the next
+     * maneuver ("150 m"), [totalDistance] = to the destination. Maps decides what is a
+     * maneuver here (it only lists real ones); the last one is the destination when the
+     * two distances meet. Speed comes from the speedometer's GPS (fresh within 3 s).
+     */
+    fun onMapsManeuver(title: String, totalDistance: String, text: String, iconCrc: Long) {
+        if (isRouteActive || isRouteDemoRunning) return
+        val dist = RouteFormat.parseMeters(title)
+        if (dist == null) {
+            turnBeeper.update(null, 0.0, null, false, false)
+            return
+        }
+        val total = RouteFormat.parseMeters(totalDistance)
+        val arrival = total != null && total <= dist + 30
+        val speed = if (SystemClock.elapsedRealtime() - mapsSpeedAtMs < 3000) mapsSpeedMps else null
+        turnBeeper.update("m:$text:$iconCrc", dist, speed, arrival, TurnBeepPrefs.isEnabled(this))
+    }
+
+    /** Route mode: beep for the next maneuver if it's a real turn or the destination -
+     * "keep straight" style steps (STRAIGHT arrow) don't get one. */
+    private fun beepForRoute(r: Route, s: Double, speedMps: Double?) {
+        val next = r.nextManeuver(s)
+        val arrival = next == null || next.glyph == RouteIcons.Glyph.ARRIVE
+        val real = next != null && next.glyph != RouteIcons.Glyph.STRAIGHT
+        val at = next?.atM ?: r.road.lengthM
+        val key = if (arrival || real) "r${System.identityHashCode(r)}:$at" else null
+        turnBeeper.update(key, at - s, speedMps, arrival, TurnBeepPrefs.isEnabled(this))
+    }
+
+    private fun stopMapsSpeed(sendHide: Boolean) {
+        if (!mapsSpeedActive) return
+        mapsSpeedActive = false
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        runCatching { lm.removeUpdates(mapsSpeedListener) }
+        mapsFixes.clear()
+        mapsLimitKmh = null
+        if (sendHide && status == Status.CONNECTED) {
+            coalesce(KIND_SPEED)
+            enqueuePacket(ChronosProtocol.buildSpeedInfo(null, null), KIND_SPEED)
+        }
+        Log.i(TAG, "Maps speedometer stopped")
+    }
+
+    private fun onMapsFix(fix: Location) {
+        if (!mapsSpeedActive) return
+        mapsSpeedMps = if (fix.hasSpeed()) fix.speed.toDouble() else null
+        mapsSpeedAtMs = SystemClock.elapsedRealtime()
+        mapsFixes.addLast(fix)
+        while (mapsFixes.size > 10 || (fix.time - mapsFixes.first.time) > 60000) mapsFixes.removeFirst()
+        maybeLookupMapsLimit(fix)
+        if (status == Status.CONNECTED) {
+            val kmh = if (fix.hasSpeed()) (fix.speed * 3.6f).toInt() else null
+            coalesce(KIND_SPEED)
+            enqueuePacket(ChronosProtocol.buildSpeedInfo(kmh, mapsLimitKmh), KIND_SPEED)
+        }
+    }
+
+    /** Ask the map which road we're on and its limit: every 12 s while moving, or 3 s
+     * after a turn. Uses the recent fixes (accurate ones only, >= 30 m of track) so the
+     * matcher can tell a road from the one crossing it. One request at a time. */
+    private fun maybeLookupMapsLimit(fix: Location) {
+        if (mapsLimitInFlight || !fix.hasSpeed() || fix.speed < 3f) return
+        val now = SystemClock.elapsedRealtime()
+        val turned = fix.hasBearing() && !mapsLimitBearing.isNaN() &&
+            Math.abs(((fix.bearing - mapsLimitBearing) % 360 + 540) % 360 - 180) > 50
+        val due = now - mapsLimitAtMs > MAPS_LIMIT_EVERY_MS ||
+            (turned && now - mapsLimitAtMs > MAPS_LIMIT_AFTER_TURN_MS)
+        if (!due) return
+        val pts = mapsFixes.filter { it.accuracy <= 30f }.takeLast(8)
+        if (pts.size < 3 || pts.first().distanceTo(pts.last()) < 30f) return
+        mapsLimitInFlight = true
+        mapsLimitAtMs = now
+        mapsLimitBearing = if (fix.hasBearing()) fix.bearing else Float.NaN
+        routeWorker.execute {
+            val limit = runCatching { org.chronoscompanion.app.route.ValhallaClient.speedLimitHere(pts) }
+                .onFailure { Log.w(TAG, "Maps limit lookup failed", it) }.getOrNull()
+            mainHandler.post {
+                mapsLimitInFlight = false
+                if (mapsSpeedActive) mapsLimitKmh = limit
+            }
+        }
+    }
+
+    /** Re-promote the foreground service, adding the location type while a route runs.
+     * Required on Android 14 to keep getting fixes with the screen off; only allowed
+     * while the app is visible - startRoute() is called from the share screen, so it is. */
+    private fun setForegroundTypes(withLocation: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        if (withLocation) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        try {
+            startForeground(NOTIF_ID, buildNotification(status), types)
+        } catch (e: Exception) {
+            // SecurityException without the permission, or ForegroundServiceStartNotAllowed
+            // if somehow not visible. Tracking still works with the screen on; say so.
+            Log.w(TAG, "Could not set foreground types (location=$withLocation)", e)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startRouteTracking() {
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        try {
+            // GPS only, 1 Hz. The network provider is too coarse to place a rider on a lane
+            // of road, and mixing it in would make s jump between the two sources.
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, routeLocationListener, Looper.getMainLooper())
+        } catch (e: Exception) {
+            Log.w(TAG, "Route: cannot request GPS updates", e)
+            toast(R.string.route_err_no_fix)
+        }
+    }
+
+    private fun stopRouteTracking() {
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        runCatching { lm.removeUpdates(routeLocationListener) }
+        tracker?.close()
+        tracker = null
+    }
+
+    private fun sendRouteState(r: Route, s: Double) {
+        val next = r.nextManeuver(s)
+        val glyph = next?.glyph ?: RouteIcons.Glyph.ARRIVE
+        val bits = RouteIcons.bits(glyph)
+        val crc = ChronosProtocol.crc32Of(bits)
+        val remainingS = r.remainingDurationS(s)
+        // Same shapes Google Maps sends ("850 m", "1 h 20 min", "121,8 km", "Llegada:
+        // 20:36"), so the watch's ring, trip tracker and info line parse route mode exactly
+        // like Maps. Data before icon - see handleMapsNotification for why order matters.
+        sendNavigationData(
+            title = RouteFormat.distance((next?.atM ?: r.road.lengthM) - s),
+            duration = RouteFormat.duration(remainingS),
+            distance = RouteFormat.distance(r.remainingDistanceM(s)),
+            eta = "Llegada: " + RouteFormat.clock(System.currentTimeMillis() + (remainingS * 1000).toLong()),
+            directions = next?.text ?: "Llegada a destino",
+            speed = "",
+            hasIcon = true,
+            iconCrc = crc
+        )
+        sendNavigationIcon(bits, crc)
+        val left = r.remainingDistanceM(s)
+        if (abs(left - widgetRemainingM) >= 500) {
+            widgetRemainingM = left
+            org.chronoscompanion.app.widget.NaviWidget.update(this)
+        }
+        updateRouteScale()
+        // Same zoom for the route line and, through the pose, for the streets.
+        val pose = riderPose(r, s)
+        sendRouteFrame(r.road.frameAt(s, routeScale), routeSpeedKmh, r.speedLimitAt(s), pose)
+        if (pose != null) {
+            maybeFetchStreets(r, s)
+            sendStreetsNear(pose.xDm / 10.0, pose.yDm / 10.0)
+        }
+    }
+
+    fun startRoute(route: Route, destination: org.chronoscompanion.app.route.Destination? = null,
+                   prefs: org.chronoscompanion.app.route.RoutePrefs? = null) {
+        stopMapsSpeed(sendHide = false) // the route frames carry speed/limit from here on
+        stopRouteDemo()
+        stopRoute()
+        routeDest = destination
+        if (prefs != null) routePrefs = prefs
+        offRouteSinceMs = 0L
+        rerouting = false
+        rerouteProblemSaid = false
+        lastFixAtMs = 0L
+        lastSpeedMps = 0.0
+        activeRoute = route
+        routeS = 0.0
+        routeSpeedKmh = null
+        arrivedAtMs = 0L
+        lastRouteSendMs = 0L
+        tracker = RouteTracker(route, this)
+        streetsRoute = null
+        streetsCoveredUntil = 0.0
+        streetsFetching = false
+        streetsRetryAtMs = 0L
+        streetsNeedClear = true
+        routeScale = Polyline.SCALE_MAX_PX_PER_M
+        // Streets the share screen already started loading for this very route.
+        val pre = org.chronoscompanion.app.route.StreetPrefetch.take(route)
+        val map = pre?.map ?: StreetMap(route.originLat, route.originLon)
+        streetMap = map
+        if (pre != null) {
+            if (pre.done) {
+                onStreetsOutcome(route, pre.toS, pre.outcome)
+            } else {
+                streetsFetching = true
+                pre.onDone = {
+                    if (streetMap === map) {
+                        streetsFetching = false
+                        onStreetsOutcome(route, pre.toS, pre.outcome)
+                    }
+                }
+            }
+        }
+        voice = RouteVoice(this).also { it.announceStart(route) }
+        setForegroundTypes(withLocation = true)
+        startRouteTracking()
+        mainHandler.post(routeRunnable)
+        widgetRemainingM = route.distanceM
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
+    }
+
+    fun stopRoute() {
+        if (activeRoute == null) return
+        activeRoute = null
+        rerouteGen++ // any in-flight reroute answer is now stale
+        rerouting = false
+        turnBeeper.reset()
+        mainHandler.removeCallbacks(routeRunnable)
+        stopRouteTracking()
+        voice?.shutdown()
+        voice = null
+        // The route clear below makes the watch drop its streets too.
+        streetMap = null
+        streetsRoute = null
+        coalesce(KIND_STREETS)
+        sentStreetIds.clear()
+        sentStreetPts = 0
+        streetsNeedClear = true
+        // Keep the location type: the Google Maps speedometer may need it next.
+        setForegroundTypes(withLocation = hasFineLocation())
+        sendRouteClear()
+        sendNavigationStop()
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
 
     fun sendNavigationStop() {
@@ -1052,15 +1834,20 @@ class ChronosBleService : Service() {
         lastWeatherSendAtMs = SystemClock.elapsedRealtime()
         weatherSentThisConnection = true
         Log.i(TAG, "Sending weather: ${result.city}, today ${result.days.firstOrNull()?.temp}°")
-        enqueuePacket(ChronosProtocol.buildWeatherDaily(result.days))
-        enqueuePacket(ChronosProtocol.buildWeatherHighLow(result.days))
-        enqueuePacket(ChronosProtocol.buildWeatherUvPressure(result.uvIndex, result.pressureHpa))
-        if (result.city.isNotEmpty()) {
-            enqueuePacket(ChronosProtocol.buildWeatherCity(result.city))
-        }
+        // Order matters: the high/low packet (0x88) is the only one that makes the watch
+        // rebuild its weather lists (CF_WEATHER a=2 -> weatherUpdate), and it rebuilds at
+        // once if the weather screen is open. Hourly, city and UV carry no trigger, so they
+        // must already be there by then - sent after it, the hourly panels stayed at
+        // "00:00 / 0°C" until the next refresh 30 minutes later.
         if (result.hourly.isNotEmpty()) {
             enqueuePacket(ChronosProtocol.buildWeatherHourly(result.hourly))
         }
+        if (result.city.isNotEmpty()) {
+            enqueuePacket(ChronosProtocol.buildWeatherCity(result.city))
+        }
+        enqueuePacket(ChronosProtocol.buildWeatherUvPressure(result.uvIndex, result.pressureHpa))
+        enqueuePacket(ChronosProtocol.buildWeatherDaily(result.days))
+        enqueuePacket(ChronosProtocol.buildWeatherHighLow(result.days))
     }
 
     /**
@@ -1123,7 +1910,7 @@ class ChronosBleService : Service() {
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            CHANNEL_ID, "Conexión con el reloj", NotificationManager.IMPORTANCE_LOW
+            CHANNEL_ID, "Conexión con el navegador", NotificationManager.IMPORTANCE_LOW
         )
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
     }
@@ -1131,11 +1918,23 @@ class ChronosBleService : Service() {
     private fun startForeground() {
         // Use the CURRENT status, not a hardcoded DISCONNECTED: onStartCommand() runs
         // again on every tap of "Conectar", so tapping it while already connected used to
-        // rewrite the notification to "Buscando el reloj…" even though the connection was
+        // rewrite the notification to "Buscando el navegador…" even though the connection was
         // fine and nothing was actually re-scanned.
         val notification = buildNotification(status)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            // Location type from the start (this runs on "Conectar", with the app visible):
+            // Android 14 only lets a location-type service be promoted while the app is in
+            // the foreground, and Google Maps navigation - when the speedometer needs GPS -
+            // starts with this app in the background. Declaring the type costs nothing;
+            // the GPS is only read while navigating.
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (hasFineLocation()) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            try {
+                startForeground(NOTIF_ID, notification, types)
+            } catch (e: Exception) {
+                Log.w(TAG, "Location FGS type refused, connectedDevice only", e)
+                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            }
         } else {
             startForeground(NOTIF_ID, notification)
         }
@@ -1148,10 +1947,10 @@ class ChronosBleService : Service() {
 
     private fun buildNotification(s: Status): Notification {
         val text = when (s) {
-            Status.DISCONNECTED -> "Buscando el reloj…"
-            Status.SCANNING -> "Buscando el reloj…"
-            Status.CONNECTING -> "Conectando con el reloj…"
-            Status.CONNECTED -> "Conectado al reloj"
+            Status.DISCONNECTED -> "Buscando el navegador…"
+            Status.SCANNING -> "Buscando el navegador…"
+            Status.CONNECTING -> "Conectando con el navegador…"
+            Status.CONNECTED -> "Conectado al navegador"
         }
         val stopIntent = Intent(this, ChronosBleService::class.java).setAction(ACTION_STOP)
         val stopPendingIntent = PendingIntent.getService(
@@ -1163,7 +1962,7 @@ class ChronosBleService : Service() {
             stopPendingIntent
         ).build()
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Chronos Companion")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
