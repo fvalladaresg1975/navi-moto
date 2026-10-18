@@ -84,6 +84,12 @@ class StreetMap(val originLat: Double, val originLon: Double) {
     @Synchronized
     fun hasTile(name: String): Boolean = name in loadedTiles
 
+    /** Pieces already in this map's frame - the demo's made-up city. */
+    @Synchronized
+    fun addStreets(list: List<Street>) {
+        for (s in list) streets[s.id] = s
+    }
+
     @Synchronized
     fun size(): Int = streets.size
 

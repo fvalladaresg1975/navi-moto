@@ -1085,9 +1085,22 @@ class ChronosBleService : Service() {
         enqueuePacket(ChronosProtocol.buildRouteClear(), KIND_ROUTE)
     }
 
-    // --- PHASE 1 demo: drive a made-up road once, ~70 s, to judge the watch view -------
+    // --- Demo, for filming the system: route mode through a made-up city, then arrow mode
+    // (Google Maps style). See RouteDemo. Everything goes through the real paths - nav data,
+    // icons, route frames with rider pose, street upload, speed info, beep - so the video
+    // shows exactly what a ride does. The remaining distance is a real figure now, so the
+    // watch's "Viaje" app records the demo as the last trip.
     private var routeDemo: RouteDemo? = null
     private var routeDemoS = 0.0
+    private var demoTick = 0
+    private var demoLastManeuver: RouteDemo.Maneuver? = null
+    /** Arrow part: index into RouteDemo.arrowSteps (-1 = still in the route part), metres
+     * left to that step's maneuver, and ticks held on the arrival screen. */
+    private var demoArrowStep = -1
+    private var demoArrowLeft = 0.0
+    private var demoArrowHold = 0
+    private var demoVoice: RouteVoice? = null
+    private val demoSaid = HashSet<String>()
 
     val isRouteDemoRunning: Boolean get() = routeDemo != null
 
@@ -1098,40 +1111,134 @@ class ChronosBleService : Service() {
                 // Link dropped mid-demo: stop quietly. Queuing a clear for a watch that is
                 // not there would only deliver a stale "stop" after the next reconnect.
                 routeDemo = null
+                demoVoice?.shutdown()
+                demoVoice = null
                 return
             }
-            if (routeDemoS >= demo.lengthM - 20) {
+            if (demoArrowStep < 0) {
+                if (routeDemoS < demo.lengthM - 3) {
+                    demoRouteTick(demo)
+                    mainHandler.postDelayed(this, RouteDemo.TICK_MS)
+                    return
+                }
+                // Route part done: hold the finish flag a moment, then switch to arrows.
+                if (demoArrowHold < 12) {
+                    demoArrowHold++
+                    mainHandler.postDelayed(this, RouteDemo.TICK_MS)
+                    return
+                }
+                startDemoArrows(demo)
+            }
+            if (!demoArrowTick(demo)) {
                 stopRouteDemo()
                 return
             }
-            val m = demo.nextManeuver(routeDemoS)
-            // Turn info rides the EXISTING nav path, so the ring, hero distance and icon all
-            // behave exactly as with Maps. Data before icon - see handleMapsNotification.
-            // `distance` is deliberately not a parsable figure: the watch's trip tracker sums
-            // decreases of that field, and a demo must never overwrite the user's real last
-            // trip in the Viaje app.
+            mainHandler.postDelayed(this, RouteDemo.ARROW_TICK_MS)
+        }
+    }
+
+    /** One route-mode frame: same packets as sendRouteState(), from the demo's road. */
+    private fun demoRouteTick(demo: RouteDemo) {
+        val s = routeDemoS
+        val m = demo.nextManeuver(s)
+        val toTurn = (m.atM - s).coerceAtLeast(0.0)
+        val kmh = demo.speedKmhAt(s)
+        routeSpeedKmh = kmh.roundToInt()
+        if (demoTick % 4 == 0 || m !== demoLastManeuver) {
+            demoLastManeuver = m
+            val remaining = (demo.lengthM - s).coerceAtLeast(0.0)
+            val remainingS = remaining / 11.0
             val bits = demo.iconBits(m.glyph)
             val crc = ChronosProtocol.crc32Of(bits)
             sendNavigationData(
-                title = demo.distanceText(m.atM - routeDemoS),
-                duration = "Prueba",
-                distance = "demo",
-                eta = "Ruta",
+                title = RouteFormat.distance(toTurn),
+                duration = RouteFormat.duration(remainingS),
+                distance = RouteFormat.distance(remaining),
+                eta = "Llegada: " + RouteFormat.clock(System.currentTimeMillis() + (remainingS * 1000).toLong()),
                 directions = m.text,
                 speed = "",
                 hasIcon = true,
                 iconCrc = crc
             )
             sendNavigationIcon(bits, crc)
-            // Speed/limit so the demo shows the whole BaRing-style screen at home, including
-            // the over-speed glow: 58 km/h against a 50 limit between the two bends.
-            val demoSpeed = if (routeDemoS in 150.0..330.0) 58 else 40
-            sendRouteFrame(demo.frameAt(routeDemoS), speedKmh = demoSpeed, limitKmh = 50)
-            // The turn beep too, so it can be heard at home without a ride.
-            turnBeeper.update("d:${m.atM}", m.atM - routeDemoS, RouteDemo.SPEED_M_S,
-                m.glyph == RouteIcons.Glyph.ARRIVE, TurnBeepPrefs.isEnabled(this@ChronosBleService))
-            routeDemoS += RouteDemo.SPEED_M_S * RouteDemo.TICK_MS / 1000.0
-            mainHandler.postDelayed(this, RouteDemo.TICK_MS)
+        }
+        updateRouteScale()
+        val (px, py) = demo.road.pointAt(s)
+        var hdg = Math.toDegrees(demo.road.headingAt(s))
+        if (hdg < 0) hdg += 360.0
+        // The demo's street map shares the road's frame, so the pose is the road point itself.
+        val pose = ChronosProtocol.RiderPose((px * 10).roundToInt(), (py * 10).roundToInt(),
+            (hdg * 100).roundToInt() % 36000, (routeScale * 100).roundToInt())
+        sendRouteFrame(demo.road.frameAt(s, routeScale), routeSpeedKmh, demo.limitAt(s), pose)
+        sendStreetsNear(px, py)
+        // Beep timed on the speed the demo really advances at (see RouteDemo.TIME_SCALE).
+        turnBeeper.update("d:${m.atM}", toTurn, kmh / 3.6 * RouteDemo.TIME_SCALE,
+            m.glyph == RouteIcons.Glyph.ARRIVE, TurnBeepPrefs.isEnabled(this))
+        demoSay("r${m.atM}", m.text, m.glyph, toTurn)
+        routeDemoS += kmh / 3.6 * RouteDemo.TIME_SCALE * RouteDemo.TICK_MS / 1000.0
+        demoTick++
+    }
+
+    private fun startDemoArrows(demo: RouteDemo) {
+        sendRouteClear() // back to the arrow layout; navigation itself stays on
+        routeSpeedKmh = null
+        turnBeeper.reset()
+        demoArrowStep = 0
+        demoArrowLeft = demo.arrowSteps[0].lengthM
+        demoArrowHold = 0
+    }
+
+    /** One arrow-mode update, as Google Maps would post it. False = demo finished. */
+    private fun demoArrowTick(demo: RouteDemo): Boolean {
+        val steps = demo.arrowSteps
+        var st = steps[demoArrowStep]
+        if (demoArrowLeft <= 0) {
+            if (st.glyph == RouteIcons.Glyph.ARRIVE) {
+                if (++demoArrowHold > 4) return false
+                demoArrowLeft = 0.0
+            } else {
+                demoArrowStep++
+                st = steps[demoArrowStep]
+                demoArrowLeft = st.lengthM
+            }
+        }
+        val remaining = demoArrowLeft + steps.drop(demoArrowStep + 1).sumOf { it.lengthM }
+        val remainingS = remaining / 11.0
+        val bits = demo.iconBits(st.glyph)
+        val crc = ChronosProtocol.crc32Of(bits)
+        sendNavigationData(
+            title = RouteFormat.distance(demoArrowLeft),
+            duration = RouteFormat.duration(remainingS),
+            distance = RouteFormat.distance(remaining),
+            eta = "Llegada: " + RouteFormat.clock(System.currentTimeMillis() + (remainingS * 1000).toLong()),
+            directions = st.text,
+            speed = "",
+            hasIcon = true,
+            iconCrc = crc
+        )
+        sendNavigationIcon(bits, crc)
+        // A little wobble, like a real speedometer; 0 once arrived.
+        val kmh = if (demoArrowLeft <= 0) 0 else st.kmh + listOf(0, 1, -1, 2, 0, -2)[demoTick % 6]
+        coalesce(KIND_SPEED)
+        enqueuePacket(ChronosProtocol.buildSpeedInfo(kmh, st.limit), KIND_SPEED)
+        turnBeeper.update("a$demoArrowStep", demoArrowLeft, st.kmh / 3.6 * RouteDemo.TIME_SCALE,
+            st.glyph == RouteIcons.Glyph.ARRIVE, TurnBeepPrefs.isEnabled(this))
+        demoSay("a$demoArrowStep", st.text, st.glyph, demoArrowLeft)
+        demoArrowLeft -= st.kmh / 3.6 * RouteDemo.TIME_SCALE * RouteDemo.ARROW_TICK_MS / 1000.0
+        demoTick++
+        return true
+    }
+
+    /** Spoken prompts: an early call around 150 m and one at the turn, once each. */
+    private fun demoSay(key: String, text: String, glyph: RouteIcons.Glyph, toTurn: Double) {
+        val voice = demoVoice ?: return
+        val arrive = glyph == RouteIcons.Glyph.ARRIVE
+        if (toTurn in 60.0..170.0 && demoSaid.add("$key:far")) {
+            val m = ((toTurn / 50).roundToInt() * 50).coerceAtLeast(50)
+            voice.say(if (arrive) "En $m metros, llegará a su destino"
+                      else "En $m metros, " + text.replaceFirstChar { it.lowercase() })
+        } else if (toTurn <= 30.0 && demoSaid.add("$key:now")) {
+            voice.say(if (arrive) "Ha llegado a su destino" else text)
         }
     }
 
@@ -1142,17 +1249,42 @@ class ChronosBleService : Service() {
         }
         stopRoute()
         stopRouteDemo()
-        routeDemo = RouteDemo()
+        val demo = RouteDemo()
+        routeDemo = demo
         routeDemoS = 0.0
+        demoTick = 0
+        demoLastManeuver = null
+        demoArrowStep = -1
+        demoArrowHold = 0
+        demoSaid.clear()
+        demoVoice = RouteVoice(this)
+        // The made-up city goes up to the watch like real streets do.
+        streetMap = StreetMap(0.0, 0.0).also { it.addStreets(demo.streets) }
+        streetsRoute = null
+        streetsNeedClear = true
+        routeScale = Polyline.SCALE_MAX_PX_PER_M
         mainHandler.post(routeDemoRunnable)
         org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
 
     fun stopRouteDemo() {
         if (routeDemo == null) return
+        val inArrows = demoArrowStep >= 0
         routeDemo = null
         turnBeeper.reset()
         mainHandler.removeCallbacks(routeDemoRunnable)
+        demoVoice?.shutdown()
+        demoVoice = null
+        streetMap = null
+        coalesce(KIND_STREETS)
+        sentStreetIds.clear()
+        sentStreetPts = 0
+        streetsNeedClear = true
+        routeSpeedKmh = null
+        if (inArrows) {
+            coalesce(KIND_SPEED)
+            enqueuePacket(ChronosProtocol.buildSpeedInfo(null, null), KIND_SPEED)
+        }
         sendRouteClear()
         sendNavigationStop()
         org.chronoscompanion.app.widget.NaviWidget.update(this)
