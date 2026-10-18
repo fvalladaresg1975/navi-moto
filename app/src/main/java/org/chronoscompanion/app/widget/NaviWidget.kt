@@ -33,6 +33,14 @@ class NaviWidget : AppWidgetProvider() {
         private const val ACTION_STOP_ROUTE = "org.chronoscompanion.app.widget.STOP_ROUTE"
         private const val ACTION_TOGGLE_BEEP = "org.chronoscompanion.app.widget.TOGGLE_BEEP"
         private const val ACTION_TOGGLE_STREETS = "org.chronoscompanion.app.widget.TOGGLE_STREETS"
+        private const val ACTION_BRIGHT_DOWN = "org.chronoscompanion.app.widget.BRIGHT_DOWN"
+        private const val ACTION_BRIGHT_UP = "org.chronoscompanion.app.widget.BRIGHT_UP"
+        /** Brightness steps of 10 %, never below 10 % (an AMOLED at 0 looks switched off). */
+        private const val BRIGHT_STEP_PCT = 10
+        private const val BRIGHT_MIN_PCT = 10
+
+        private fun toPct(level: Int) = (level * 100 + 127) / 255
+        private fun toLevel(pct: Int) = ((pct * 255 + 50) / 100).coerceIn(1, 255)
 
         /** Redraws every placed widget from the current state. Cheap; main thread. */
         fun update(ctx: Context) {
@@ -93,7 +101,29 @@ class NaviWidget : AppWidgetProvider() {
             v.setOnClickPendingIntent(R.id.w_beep, broadcast(ctx, 4, ACTION_TOGGLE_BEEP))
             toggle(v, R.id.w_streets_icon, R.id.w_streets_label, StreetMapPrefs.isEnabled(ctx))
             v.setOnClickPendingIntent(R.id.w_streets, broadcast(ctx, 5, ACTION_TOGGLE_STREETS))
+
+            // Brightness: the watch's own reported level; "—" until it reports (or offline).
+            val level = if (status == ChronosBleService.Status.CONNECTED) service?.watchBrightness else null
+            v.setProgressBar(R.id.w_bright_bar, 100, level?.let { toPct(it) } ?: 0, false)
+            v.setTextViewText(R.id.w_bright_pct, level?.let { "${toPct(it)} %" } ?: "—")
+            v.setOnClickPendingIntent(R.id.w_bright_down, broadcast(ctx, 6, ACTION_BRIGHT_DOWN))
+            v.setOnClickPendingIntent(R.id.w_bright_up, broadcast(ctx, 7, ACTION_BRIGHT_UP))
             return v
+        }
+
+        /** One step of brightness up or down from the watch's current level. */
+        private fun stepBrightness(ctx: Context, up: Boolean) {
+            val s = ChronosBleService.instance
+            val cur = s?.watchBrightness
+            if (s == null || cur == null || ChronosBleService.status != ChronosBleService.Status.CONNECTED) {
+                android.widget.Toast.makeText(ctx, R.string.widget_bright_offline, android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+            // Snap to the 10 % grid first, so steps land on 10, 20 ... 100 whatever the
+            // watch's own slider had left it at.
+            val pct = (toPct(cur) + BRIGHT_STEP_PCT / 2) / BRIGHT_STEP_PCT * BRIGHT_STEP_PCT
+            val next = (pct + if (up) BRIGHT_STEP_PCT else -BRIGHT_STEP_PCT).coerceIn(BRIGHT_MIN_PCT, 100)
+            s.setWatchBrightness(toLevel(next))
         }
 
         private fun toggle(v: RemoteViews, icon: Int, label: Int, on: Boolean) {
@@ -122,6 +152,8 @@ class NaviWidget : AppWidgetProvider() {
                 StreetMapPrefs.setEnabled(ctx, on)
                 ChronosBleService.instance?.onStreetMapToggled(on)
             }
+            ACTION_BRIGHT_DOWN -> stepBrightness(ctx, up = false)
+            ACTION_BRIGHT_UP -> stepBrightness(ctx, up = true)
             else -> return
         }
         update(ctx)

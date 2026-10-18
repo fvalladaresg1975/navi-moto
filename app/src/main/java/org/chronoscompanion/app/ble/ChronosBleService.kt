@@ -103,6 +103,7 @@ class ChronosBleService : Service() {
         private const val KIND_SPEED = 4
         /** Street-layer packets: background filler, sent behind everything else. */
         private const val KIND_STREETS = 5
+        private const val KIND_BRIGHTNESS = 6
 
         // Street layer (route mode). See StreetMap / ChronosProtocol.buildStreets.
         /** The next corridor stretch (StreetMap.WINDOW_M) is loaded this far before the
@@ -504,6 +505,7 @@ class ChronosBleService : Service() {
                 sentStreetIds.clear()
                 sentStreetPts = 0
                 streetsNeedClear = true
+                watchBrightness = null
                 weatherSentThisConnection = false
                 sessionStarted = false
                 stopTimeSyncTimer()
@@ -593,6 +595,12 @@ class ChronosBleService : Service() {
             Log.d(TAG, "TX notify: ${value.joinToString(" ") { "%02x".format(it) }}")
             ChronosProtocol.decodeWatchCommand(value)?.let { handleWatchCommand(it) }
             ChronosProtocol.decodeDialContactIndex(value)?.let { dialContactAt(it) }
+            ChronosProtocol.decodeBrightness(value)?.let { level ->
+                mainHandler.post {
+                    watchBrightness = level
+                    org.chronoscompanion.app.widget.NaviWidget.update(this@ChronosBleService)
+                }
+            }
         }
     }
 
@@ -605,6 +613,27 @@ class ChronosBleService : Service() {
         startWeatherTimer()
         sendContacts()
         startMusicStateTimer()
+        // Ask the watch for its brightness, for the widget's bar.
+        enqueuePacket(ChronosProtocol.buildBrightness(null))
+    }
+
+    // ---------------------------------------------------------------------
+    // Watch screen brightness (home-screen widget)
+    // ---------------------------------------------------------------------
+
+    /** Last level the watch reported (1-255); null until it does, or after a disconnect. */
+    @Volatile var watchBrightness: Int? = null
+        private set
+
+    /** Sets the watch's brightness. Shown at once; the watch confirms with its own report.
+     * Main thread. */
+    fun setWatchBrightness(level: Int) {
+        if (status != Status.CONNECTED) return
+        val l = level.coerceIn(1, 255)
+        watchBrightness = l
+        coalesce(KIND_BRIGHTNESS) // tapping + several times: only the last level matters
+        enqueuePacket(ChronosProtocol.buildBrightness(l), KIND_BRIGHTNESS)
+        org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
 
     // ---------------------------------------------------------------------

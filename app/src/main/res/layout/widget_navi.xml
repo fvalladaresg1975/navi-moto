@@ -1,114 +1,182 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Home-screen widget (NaviWidget): status, the main action (Conectar / Detener ruta /
-     Abrir), and the turn-beep and street-layer switches. RemoteViews only: plain
-     LinearLayout / TextView / ImageView. -->
+<!-- Home-screen widget (NaviWidget), 4x2: status, the main action (Conectar / Detener ruta /
+     Abrir) and the turn-beep and street-layer switches on top; the watch's screen
+     brightness underneath (a slider is not possible in a widget, so - / bar / +).
+     RemoteViews only: plain LinearLayout / TextView / ImageView / ProgressBar. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
+    android:orientation="vertical"
     android:paddingStart="14dp"
-    android:paddingEnd="6dp">
+    android:paddingTop="4dp"
+    android:paddingEnd="6dp"
+    android:paddingBottom="6dp">
 
     <LinearLayout
-        android:id="@+id/w_open"
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/w_dot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:src="@drawable/widget_dot" />
-
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:orientation="vertical">
+            android:id="@+id/w_open"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/w_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/app_name"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+            <ImageView
+                android:id="@+id/w_dot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:src="@drawable/widget_dot" />
 
-            <TextView
-                android:id="@+id/w_status"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:textColor="#B3FFFFFF"
-                android:textSize="12sp" />
+                android:layout_marginStart="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/w_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/w_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/w_main"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/widget_pill"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FF1A1A1A"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/w_beep"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="6dp">
+
+            <ImageView
+                android:id="@+id/w_beep_icon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_widget_beep" />
+
+            <TextView
+                android:id="@+id/w_beep_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_beep"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/w_streets"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
+
+            <ImageView
+                android:id="@+id/w_streets_icon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_widget_streets" />
+
+            <TextView
+                android:id="@+id/w_streets_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_streets"
+                android:textSize="10sp" />
         </LinearLayout>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/w_main"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
-        android:background="@drawable/widget_pill"
-        android:paddingStart="12dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="6dp"
-        android:textColor="#FF1A1A1A"
-        android:textSize="13sp"
-        android:textStyle="bold" />
-
+    <!-- Brightness row -->
     <LinearLayout
-        android:id="@+id/w_beep"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingStart="8dp"
-        android:paddingEnd="6dp">
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="8dp">
 
         <ImageView
-            android:id="@+id/w_beep_icon"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:src="@drawable/ic_widget_beep" />
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_widget_brightness" />
 
         <TextView
-            android:id="@+id/w_beep_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/widget_beep"
-            android:textSize="10sp" />
-    </LinearLayout>
+            android:id="@+id/w_bright_down"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="−"
+            android:textColor="#FFFFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
 
-    <LinearLayout
-        android:id="@+id/w_streets"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp">
-
-        <ImageView
-            android:id="@+id/w_streets_icon"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:src="@drawable/ic_widget_streets" />
+        <ProgressBar
+            android:id="@+id/w_bright_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="8dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:layout_weight="1"
+            android:max="100"
+            android:progressBackgroundTint="#55FFFFFF"
+            android:progressTint="#FFFFC24D" />
 
         <TextView
-            android:id="@+id/w_streets_label"
-            android:layout_width="wrap_content"
+            android:id="@+id/w_bright_up"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="+"
+            android:textColor="#FFFFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/w_bright_pct"
+            android:layout_width="44dp"
             android:layout_height="wrap_content"
-            android:text="@string/widget_streets"
-            android:textSize="10sp" />
+            android:gravity="end"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp" />
     </LinearLayout>
 </LinearLayout>

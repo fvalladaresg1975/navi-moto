@@ -425,6 +425,21 @@ object ChronosProtocol {
         NAVIGATION_STOP
     }
 
+    /** 0xC8, phone -> watch: set the screen brightness (1-255), or with null just ask the
+     * watch to report it. */
+    fun buildBrightness(level: Int?): ByteArray =
+        if (level == null) buildPacket(0xC8, 0x00, ByteArray(0))
+        else buildPacket(0xC8, 0x01, byteArrayOf(level.coerceIn(1, 255).toByte()))
+
+    /** 0xC8, watch -> phone: its current brightness (1-255) in the low byte - sent after
+     * every change (from the phone or its own settings slider) and when asked. */
+    fun decodeBrightness(bytes: ByteArray): Int? {
+        if (bytes.size != 7) return null
+        if (bytes[0] != 0xAB.toByte() || bytes[3] != 0xFF.toByte() || bytes[5] != 0x80.toByte()) return null
+        if ((bytes[4].toInt() and 0xFF) != 0xC8) return null
+        return (bytes[6].toInt() and 0xFF).takeIf { it >= 1 }
+    }
+
     /** "Dial the contact at this index" - hi=0xC2, the index in the low byte. Separate
      * from [WatchCommand] because it carries a value rather than being a fixed action. */
     fun decodeDialContactIndex(bytes: ByteArray): Int? {
