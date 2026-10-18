@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4x2 (status row + brightness row), resizable. No periodic updates: NaviWidget.update()
+<!-- 4x1: status row + brightness row packed into one launcher row (~86 dp), resizable. No periodic updates: NaviWidget.update()
      is called on every state change (connection, route start/stop/progress, switches,
      brightness reports from the watch). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
     android:initialLayout="@layout/widget_navi"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="56dp"
     android:previewImage="@mipmap/ic_launcher"
     android:previewLayout="@layout/widget_navi"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />
