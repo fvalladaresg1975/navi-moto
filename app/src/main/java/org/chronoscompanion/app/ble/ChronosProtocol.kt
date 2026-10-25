@@ -425,6 +425,12 @@ object ChronosProtocol {
         NAVIGATION_STOP
     }
 
+    /** The phone's battery - the ChronosESP32 library's own command 0x91 (it parses
+     * data[6] = charging, data[7] = level and fires CF_PBAT). Shown on the watch's
+     * control panel next to the watch's own battery. */
+    fun buildPhoneBattery(charging: Boolean, level: Int): ByteArray =
+        buildPacket(0x91, 0x00, byteArrayOf(if (charging) 1 else 0, level.coerceIn(0, 100).toByte()))
+
     /** 0xC8, phone -> watch: set the screen brightness (1-255), or with null just ask the
      * watch to report it. */
     fun buildBrightness(level: Int?): ByteArray =
@@ -553,6 +559,26 @@ object ChronosProtocol {
         val payload = mutableListOf<Byte>(0x00)
         payload.addAll(truncateUtf8(sanitizeForWatch(city), MAX_NAV_FIELD_BYTES).toByteArray(Charsets.UTF_8).toList())
         return buildPacket(0x7E, 0x01, payload.toByteArray(), header = 0xEA)
+    }
+
+    /**
+     * 0xC9 (ours): weather the library's protocol doesn't carry, for the watch's Navi Moto
+     * faces - [sunrise h][sunrise m][sunset h][sunset m] (255 = unknown) then 24 x [chance
+     * of rain %, 255 = unknown] by hour of day.
+     */
+    fun buildWeatherExtra(sunriseMin: Int, sunsetMin: Int, rainByHour: IntArray): ByteArray {
+        val p = ByteArray(4 + 24)
+        fun hm(min: Int, o: Int) {
+            p[o] = (if (min < 0) 255 else min / 60).toByte()
+            p[o + 1] = (if (min < 0) 255 else min % 60).toByte()
+        }
+        hm(sunriseMin, 0)
+        hm(sunsetMin, 2)
+        for (h in 0 until 24) {
+            val r = rainByHour.getOrElse(h) { -1 }
+            p[4 + h] = (if (r in 0..100) r else 255).toByte()
+        }
+        return buildPacket(0xC9, 0x01, p)
     }
 
     /** One hour's forecast for [buildWeatherHourly]. [hour] is 0-23 (hour of day). */

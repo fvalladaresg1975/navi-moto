@@ -26,7 +26,13 @@ object WeatherFetcher {
         val days: List<ChronosProtocol.WeatherDay>, // index 0 = today
         val uvIndex: Int,
         val pressureHpa: Int,
-        val hourly: List<ChronosProtocol.HourlyData> // today's 24 hours, index = hour of day
+        val hourly: List<ChronosProtocol.HourlyData>, // today's 24 hours, index = hour of day
+        /** Chance of rain (%) by hour of day for the next 24 hours, -1 = unknown. For the
+         * watch's "Clima de ruta" face (0xC9); the library's protocol has no rain. */
+        val rainByHour: IntArray = IntArray(24) { -1 },
+        /** Today's sunrise / sunset, minutes after midnight local time; -1 = unknown. */
+        val sunriseMin: Int = -1,
+        val sunsetMin: Int = -1,
     )
 
     private const val PREFS_NAME = "weather_prefs"
@@ -200,8 +206,8 @@ object WeatherFetcher {
             val url = URL(
                 "https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}" +
                     "&current=temperature_2m,weather_code,pressure_msl" +
-                    "&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max" +
-                    "&hourly=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m,uv_index" +
+                    "&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset" +
+                    "&hourly=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m,uv_index,precipitation_probability" +
                     "&forecast_days=7&forecast_hours=24&timezone=auto"
             )
             val conn = url.openConnection() as HttpURLConnection
@@ -257,7 +263,24 @@ object WeatherFetcher {
                 }
             } ?: emptyList()
 
-            Result(city = cityName(context, location), days = days, uvIndex = uvToday, pressureHpa = pressure, hourly = hourly)
+            // Chance of rain by hour of day, from the same 24 hourly rows (the next 24 h).
+            val rainByHour = IntArray(24) { -1 }
+            json.optJSONObject("hourly")?.let { h ->
+                val times = h.getJSONArray("time")
+                val rain = h.optJSONArray("precipitation_probability")
+                if (rain != null) for (i in 0 until times.length()) {
+                    if (rain.isNull(i)) continue
+                    rainByHour[times.getString(i).substring(11, 13).toInt()] = rain.optInt(i, -1)
+                }
+            }
+            // "2026-10-25T07:12" -> minutes after midnight (timezone=auto: already local)
+            fun minutesOf(t: String?): Int =
+                if (t == null || t.length < 16) -1 else t.substring(11, 13).toInt() * 60 + t.substring(14, 16).toInt()
+            val sunrise = minutesOf(daily.optJSONArray("sunrise")?.optString(0))
+            val sunset = minutesOf(daily.optJSONArray("sunset")?.optString(0))
+
+            Result(city = cityName(context, location), days = days, uvIndex = uvToday, pressureHpa = pressure,
+                hourly = hourly, rainByHour = rainByHour, sunriseMin = sunrise, sunsetMin = sunset)
         } catch (e: Exception) {
             Log.e(TAG, "Weather fetch failed: ${e.message}")
             null

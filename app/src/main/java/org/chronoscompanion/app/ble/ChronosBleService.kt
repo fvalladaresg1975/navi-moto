@@ -233,6 +233,8 @@ class ChronosBleService : Service() {
         instance = this
         createNotificationChannel()
         registerCallStateReceiver()
+        // Sticky broadcast: the current level arrives at once, then on every change.
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -270,6 +272,7 @@ class ChronosBleService : Service() {
         stopMusicStateTimer()
         stopScanIfRunning()
         unregisterCallStateReceiver()
+        runCatching { unregisterReceiver(batteryReceiver) }
         bluetoothGatt?.close()
         bluetoothGatt = null
         instance = null
@@ -615,6 +618,40 @@ class ChronosBleService : Service() {
         startMusicStateTimer()
         // Ask the watch for its brightness, for the widget's bar.
         enqueuePacket(ChronosProtocol.buildBrightness(null))
+        // And tell it this phone's battery (then again on every change, see below).
+        lastSentPhoneBattery = -1
+        sendPhoneBattery()
+    }
+
+    // ---------------------------------------------------------------------
+    // Phone battery -> watch control panel (0x91)
+    // ---------------------------------------------------------------------
+
+    private var phoneBatteryLevel = -1
+    private var phoneBatteryCharging = false
+    /** level * 2 + charging, as last sent; -1 = nothing sent on this connection. */
+    private var lastSentPhoneBattery = -1
+
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
+            if (level < 0 || scale <= 0) return
+            phoneBatteryLevel = level * 100 / scale
+            phoneBatteryCharging = intent.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0
+            sendPhoneBattery()
+        }
+    }
+
+    /** Sends the phone's battery if connected and it changed since the last send. Android
+     * delivers ACTION_BATTERY_CHANGED often (temperature, voltage), so this filters to what
+     * the watch shows: the percentage and whether it is plugged in. */
+    private fun sendPhoneBattery() {
+        if (phoneBatteryLevel < 0 || status != Status.CONNECTED || !sessionStarted) return
+        val key = phoneBatteryLevel * 2 + if (phoneBatteryCharging) 1 else 0
+        if (key == lastSentPhoneBattery) return
+        lastSentPhoneBattery = key
+        enqueuePacket(ChronosProtocol.buildPhoneBattery(phoneBatteryCharging, phoneBatteryLevel))
     }
 
     // ---------------------------------------------------------------------
@@ -2003,6 +2040,8 @@ class ChronosBleService : Service() {
         if (result.hourly.isNotEmpty()) {
             enqueuePacket(ChronosProtocol.buildWeatherHourly(result.hourly))
         }
+        // Rain by hour + sunset, for the "Clima de ruta" face (our own 0xC9).
+        enqueuePacket(ChronosProtocol.buildWeatherExtra(result.sunriseMin, result.sunsetMin, result.rainByHour))
         if (result.city.isNotEmpty()) {
             enqueuePacket(ChronosProtocol.buildWeatherCity(result.city))
         }

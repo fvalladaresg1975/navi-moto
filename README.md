@@ -2,7 +2,7 @@
 
 App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED 1.75** montada en el manillar en un **navegador para moto**, al estilo Beeline / BaRing. Trabaja junto al firmware de la placa: **[navi-moto-firmware](https://github.com/fvalladaresg1975/navi-moto-firmware)**.
 
-Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xC8) que el firmware decodifica sin modificar la librería.
+Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xC9) que el firmware decodifica sin modificar la librería.
 
 ## Funciones
 
@@ -12,7 +12,8 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Velocidad y límite** — velocidad GPS y límite de la vía (OpenStreetMap; 50 km/h en calles residenciales sin dato), con aviso rojo al excederlo.
 - **Navegación de Google Maps** — reenvía las indicaciones y la flecha de Maps, con velocidad y límite.
 - **Notificaciones, llamadas y contactos** — WhatsApp, SMS, etc.; contestar/rechazar y llamar desde la placa.
-- **Música, clima (Open-Meteo) y hora**.
+- **Música, clima (Open-Meteo) y hora**; el clima incluye probabilidad de lluvia por hora y atardecer para las esferas de la placa.
+- **Batería del teléfono** en el panel de control de la placa.
 - **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido, calles y brillo de la pantalla de la placa.
 
 ## Requisitos
