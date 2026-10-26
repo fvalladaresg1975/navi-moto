@@ -71,6 +71,10 @@
             android:name=".WatchContactsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".photo.PhotoFaceActivity"
+            android:exported="false" />
+
         <!-- Route mode entry point: a destination shared from CoMaps, Google Maps, etc.
              Shows progress and the route summary, then hands the route to the BLE service. -->
         <activity

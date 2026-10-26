@@ -104,6 +104,16 @@ class ChronosBleService : Service() {
         /** Street-layer packets: background filler, sent behind everything else. */
         private const val KIND_STREETS = 5
         private const val KIND_BRIGHTNESS = 6
+        /** The "Foto" face's photo: background like the streets, but never dropped. */
+        private const val KIND_PHOTO = 7
+        /** Not a write: asks for a bigger MTU, serialised with the writes (one GATT
+         * operation at a time) by riding the same queue. */
+        private const val KIND_MTU = 8
+        /** What the watch's NimBLE accepts (ChronosESP32 sets 517): 512-byte writes. */
+        private const val PHOTO_MTU = 517
+        /** After the last photo write: the watch checks, decodes and saves it to flash -
+         * the first save can include formatting the flash partition, several seconds. */
+        private const val PHOTO_ANSWER_TIMEOUT_MS = 60000L
 
         // Street layer (route mode). See StreetMap / ChronosProtocol.buildStreets.
         /** The next corridor stretch (StreetMap.WINDOW_M) is loaded this far before the
@@ -189,6 +199,9 @@ class ChronosBleService : Service() {
 
     private val writeQueue = ArrayDeque<Chunk>()
     private var writeInFlight = false
+    private var inFlightKind = KIND_OTHER
+    /** ATT MTU of this connection; 23 until a photo transfer asks for more. */
+    private var mtu = 23
     private var writeGeneration = 0
     private var nextGroupId = 0L
 
@@ -461,6 +474,8 @@ class ChronosBleService : Service() {
         rxCharacteristic = null
         writeQueue.clear()
         writeInFlight = false
+        mtu = 23
+        finishPhoto(0)
         resetNavState()
         saveDevice(device.address, device.name)
         val adapter = bluetoothAdapter ?: return
@@ -502,6 +517,8 @@ class ChronosBleService : Service() {
                 rxCharacteristic = null
                 writeQueue.clear()
                 writeInFlight = false
+                mtu = 23
+                mainHandler.post { finishPhoto(0) }
                 resetNavState()
                 // The watch may reboot before the next connection: assume it holds no
                 // streets, and start the next street upload with a clear in case it does.
@@ -587,7 +604,18 @@ class ChronosBleService : Service() {
             } else {
                 if (LOG_WIRE) Log.i(TAG, "Write OK (${writeQueue.size} chunk(s) still queued)")
             }
+            if (inFlightKind == KIND_PHOTO) mainHandler.post { photoWriteDone() }
             drainQueue()
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            Log.i(TAG, "MTU changed: $mtu (status=$status)")
+            if (status == BluetoothGatt.GATT_SUCCESS) this@ChronosBleService.mtu = mtu
+            if (writeInFlight && inFlightKind == KIND_MTU) {
+                writeInFlight = false
+                writeGeneration++
+                mainHandler.post { mtuRequestDone() }
+            }
         }
 
         override fun onCharacteristicChanged(
@@ -598,6 +626,7 @@ class ChronosBleService : Service() {
             Log.d(TAG, "TX notify: ${value.joinToString(" ") { "%02x".format(it) }}")
             ChronosProtocol.decodeWatchCommand(value)?.let { handleWatchCommand(it) }
             ChronosProtocol.decodeDialContactIndex(value)?.let { dialContactAt(it) }
+            ChronosProtocol.decodePhotoStatus(value)?.let { s -> mainHandler.post { finishPhoto(s) } }
             ChronosProtocol.decodeBrightness(value)?.let { level ->
                 mainHandler.post {
                     watchBrightness = level
@@ -986,7 +1015,25 @@ class ChronosBleService : Service() {
         // the firmware reassembling a truncated packet.
         startedGroup = next.group
         writeInFlight = true
+        inFlightKind = next.kind
         val myGeneration = ++writeGeneration
+        if (next.kind == KIND_MTU) {
+            // Not a write. onMtuChanged reopens the queue; some stacks never call it when
+            // the MTU stays the same, hence the timer (then the current MTU is used).
+            mainHandler.postDelayed({
+                if (writeInFlight && writeGeneration == myGeneration) {
+                    writeInFlight = false
+                    Log.w(TAG, "MTU request: no answer, staying at $mtu")
+                    mtuRequestDone()
+                }
+            }, 3000)
+            if (!gatt.requestMtu(PHOTO_MTU)) {
+                writeInFlight = false
+                writeGeneration++
+                mainHandler.post { mtuRequestDone() }
+            }
+            return
+        }
         if (LOG_WIRE) Log.i(TAG, "Writing ${next.bytes.size} bytes: ${next.bytes.joinToString(" ") { "%02x".format(it) }}")
         // onCharacteristicWrite occasionally never arrives after a stop/reconnect cycle
         // (observed: BLE stays "connected" but the watch's write ack callback is lost),
@@ -1032,21 +1079,136 @@ class ChronosBleService : Service() {
 
     private fun enqueuePacket(logicalPacket: ByteArray, kind: Int = KIND_OTHER) {
         val group = ++nextGroupId
-        val chunks = ChronosProtocol.chunk(logicalPacket).map { Chunk(it, kind, group) }
-        val waitingStreets: (Chunk) -> Boolean = { it.kind == KIND_STREETS && it.group != startedGroup }
-        if (kind != KIND_STREETS && writeQueue.any(waitingStreets)) {
-            // Street packets are background filler: everything else goes in front of the
-            // ones that haven't started, so they never add latency to navigation. Whole
-            // packets only - the watch reassembles a packet from consecutive chunks, so the
-            // one already on the air keeps its place.
-            val held = writeQueue.filter(waitingStreets)
-            writeQueue.removeAll(waitingStreets)
+        enqueueChunks(ChronosProtocol.chunk(logicalPacket).map { Chunk(it, kind, group) }, kind)
+    }
+
+    private fun isBackground(kind: Int) = kind == KIND_STREETS || kind == KIND_PHOTO
+
+    private fun enqueueChunks(chunks: List<Chunk>, kind: Int) {
+        val waitingBackground: (Chunk) -> Boolean = { isBackground(it.kind) && it.group != startedGroup }
+        if (!isBackground(kind) && writeQueue.any(waitingBackground)) {
+            // Street (and photo) packets are background filler: everything else goes in
+            // front of the ones that haven't started, so they never add latency to
+            // navigation. Whole packets only - the watch reassembles a packet from
+            // consecutive chunks, so the one already on the air keeps its place.
+            val held = writeQueue.filter(waitingBackground)
+            writeQueue.removeAll(waitingBackground)
             writeQueue.addAll(chunks)
             writeQueue.addAll(held)
         } else {
             writeQueue.addAll(chunks)
         }
         mainHandler.post { drainQueue() }
+    }
+
+    // ---------------------------------------------------------------------
+    // Photo for the watch's "Foto" face (0xCA)
+    // ---------------------------------------------------------------------
+
+    interface PhotoListener {
+        fun onPhotoProgress(sent: Int, total: Int)
+        /** A ChronosProtocol.PHOTO_* code, or 0: no answer / connection lost. */
+        fun onPhotoDone(status: Int)
+    }
+
+    /** Set by PhotoFaceActivity while it is open. Main thread. */
+    var photoListener: PhotoListener? = null
+
+    private var photoActive = false
+    private var photoWaitingMtu: Pair<ByteArray, Int>? = null
+    private var photoWritesTotal = 0
+    private var photoWritesDone = 0
+    private val photoAnswerTimeout = Runnable {
+        Log.w(TAG, "Photo: no answer from the watch")
+        finishPhoto(0)
+    }
+
+    val isSendingPhoto: Boolean get() = photoActive
+
+    /**
+     * Sends a JPEG for the "Foto" face, with where the time goes (0 top, 1 centre,
+     * 2 bottom). First raises the MTU so each 512-byte packet is a single write (~25
+     * times fewer writes than 20-byte chunks); if the phone or watch refuse, falls back to
+     * chunks. Progress and the watch's answer go to [photoListener]. Main thread.
+     */
+    @SuppressLint("MissingPermission")
+    fun sendPhoto(jpeg: ByteArray, timePos: Int): Boolean {
+        if (status != Status.CONNECTED || !sessionStarted || photoActive) return false
+        photoActive = true
+        // Safety net for the whole transfer (a queue cleared under it would otherwise leave
+        // it "sending" forever); replaced by the answer wait once the last write is out.
+        mainHandler.postDelayed(photoAnswerTimeout, 4 * PHOTO_ANSWER_TIMEOUT_MS)
+        bluetoothGatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+        if (mtu - 3 >= ChronosProtocol.MAX_PACKET) {
+            enqueuePhoto(jpeg, timePos)
+        } else {
+            photoWaitingMtu = jpeg to timePos
+            writeQueue.add(Chunk(ByteArray(0), KIND_MTU, ++nextGroupId))
+            mainHandler.post { drainQueue() }
+        }
+        return true
+    }
+
+    /** Back to the face's placeholder. */
+    fun removePhoto() {
+        if (status != Status.CONNECTED || photoActive) return
+        enqueuePacket(ChronosProtocol.buildPhotoRemove())
+    }
+
+    private fun mtuRequestDone() {
+        photoWaitingMtu?.let { (jpeg, pos) ->
+            photoWaitingMtu = null
+            if (photoActive) enqueuePhoto(jpeg, pos)
+        }
+        drainQueue()
+    }
+
+    private fun enqueuePhoto(jpeg: ByteArray, timePos: Int) {
+        val maxWrite = minOf(mtu - 3, ChronosProtocol.MAX_PACKET)
+        val whole = maxWrite >= 100 // one write per packet; otherwise the usual 20-byte chunks
+        val perPacket = (if (whole) maxWrite else ChronosProtocol.MAX_PACKET) - ChronosProtocol.PHOTO_DATA_OVERHEAD
+        val packets = mutableListOf(ChronosProtocol.buildPhotoStart(jpeg.size, ChronosProtocol.crc32Of(jpeg), timePos))
+        var off = 0
+        while (off < jpeg.size) {
+            val n = minOf(perPacket, jpeg.size - off)
+            packets.add(ChronosProtocol.buildPhotoData(jpeg, off, n))
+            off += n
+        }
+        packets.add(ChronosProtocol.buildPhotoEnd())
+        val chunks = packets.flatMap { p ->
+            val g = ++nextGroupId
+            (if (whole) listOf(p) else ChronosProtocol.chunk(p)).map { Chunk(it, KIND_PHOTO, g) }
+        }
+        photoWritesTotal = chunks.size
+        photoWritesDone = 0
+        Log.i(TAG, "Photo: ${jpeg.size} bytes, MTU $mtu, ${packets.size} packets in ${chunks.size} writes")
+        photoListener?.onPhotoProgress(0, photoWritesTotal)
+        enqueueChunks(chunks, KIND_PHOTO)
+    }
+
+    private fun photoWriteDone() {
+        if (!photoActive) return
+        photoWritesDone++
+        photoListener?.onPhotoProgress(photoWritesDone, photoWritesTotal)
+        if (photoWritesDone == photoWritesTotal) {
+            mainHandler.removeCallbacks(photoAnswerTimeout)
+            mainHandler.postDelayed(photoAnswerTimeout, PHOTO_ANSWER_TIMEOUT_MS)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun finishPhoto(status: Int) {
+        if (!photoActive) return
+        photoActive = false
+        photoWaitingMtu = null
+        mainHandler.removeCallbacks(photoAnswerTimeout)
+        writeQueue.removeAll { (it.kind == KIND_PHOTO || it.kind == KIND_MTU) && it.group != startedGroup }
+        bluetoothGatt?.requestConnectionPriority(
+            if (navPriorityActive) BluetoothGatt.CONNECTION_PRIORITY_HIGH
+            else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
+        )
+        Log.i(TAG, "Photo: finished, status $status")
+        photoListener?.onPhotoDone(status)
     }
 
     /**

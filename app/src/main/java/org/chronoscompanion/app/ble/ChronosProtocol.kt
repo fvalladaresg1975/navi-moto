@@ -446,6 +446,58 @@ object ChronosProtocol {
         return (bytes[6].toInt() and 0xFF).takeIf { it >= 1 }
     }
 
+    // -------------------------------------------------------------------
+    // Photo for the watch's "Foto" face (0xCA, ours)
+    // -------------------------------------------------------------------
+
+    const val PHOTO_OK = 1
+    const val PHOTO_ERR_TRANSFER = 2
+    const val PHOTO_ERR_DECODE = 3
+    const val PHOTO_ERR_MEMORY = 4
+
+    /** Bytes of a 0xCA data packet that are not JPEG: 6 header, 4 offset, 1 padding. */
+    const val PHOTO_DATA_OVERHEAD = 11
+
+    /** The firmware's packet buffer (DATA_SIZE): no packet may be longer. */
+    const val MAX_PACKET = 512
+
+    /** Start: [size u32][crc32 u32][where the time goes: 0 top, 1 centre, 2 bottom]. */
+    fun buildPhotoStart(size: Int, crc: Long, timePos: Int): ByteArray {
+        val p = ByteArray(9)
+        putU32(p, 0, size.toLong())
+        putU32(p, 4, crc)
+        p[8] = timePos.coerceIn(0, 2).toByte()
+        return buildPacket(0xCA, 0x00, p)
+    }
+
+    /** Data: [offset u32] then jpeg[offset, offset + length). Sent in order. */
+    fun buildPhotoData(jpeg: ByteArray, offset: Int, length: Int): ByteArray {
+        val p = ByteArray(4 + length)
+        putU32(p, 0, offset.toLong())
+        jpeg.copyInto(p, destinationOffset = 4, startIndex = offset, endIndex = offset + length)
+        return buildPacket(0xCA, 0x01, p)
+    }
+
+    fun buildPhotoEnd(): ByteArray = buildPacket(0xCA, 0x02, ByteArray(0))
+
+    /** Back to the face's "send a photo" placeholder. */
+    fun buildPhotoRemove(): ByteArray = buildPacket(0xCA, 0x03, ByteArray(0))
+
+    /** Watch -> phone {AB 00 04 FF CA 80 status}: one of the PHOTO_* codes. */
+    fun decodePhotoStatus(bytes: ByteArray): Int? {
+        if (bytes.size != 7) return null
+        if (bytes[0] != 0xAB.toByte() || bytes[3] != 0xFF.toByte() || bytes[5] != 0x80.toByte()) return null
+        if ((bytes[4].toInt() and 0xFF) != 0xCA) return null
+        return bytes[6].toInt() and 0xFF
+    }
+
+    private fun putU32(p: ByteArray, o: Int, v: Long) {
+        p[o] = ((v shr 24) and 0xFF).toByte()
+        p[o + 1] = ((v shr 16) and 0xFF).toByte()
+        p[o + 2] = ((v shr 8) and 0xFF).toByte()
+        p[o + 3] = (v and 0xFF).toByte()
+    }
+
     /** "Dial the contact at this index" - hi=0xC2, the index in the low byte. Separate
      * from [WatchCommand] because it carries a value rather than being a fixed action. */
     fun decodeDialContactIndex(bytes: ByteArray): Int? {

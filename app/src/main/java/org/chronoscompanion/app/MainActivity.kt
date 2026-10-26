@@ -107,6 +107,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.watchContactsButton).setOnClickListener {
             startActivity(Intent(this, WatchContactsActivity::class.java))
         }
+        findViewById<MaterialButton>(R.id.photoFaceButton).setOnClickListener {
+            startActivity(Intent(this, org.chronoscompanion.app.photo.PhotoFaceActivity::class.java))
+        }
         routeDemoButton = findViewById(R.id.routeDemoButton)
         routeDemoButton.setOnClickListener {
             val service = ChronosBleService.instance ?: return@setOnClickListener

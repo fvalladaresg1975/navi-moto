@@ -15,6 +15,7 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Música, clima (Open-Meteo) y hora**; el clima incluye probabilidad de lluvia por hora y atardecer para las esferas de la placa.
 - **Batería del teléfono** en el panel de control de la placa.
 - **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido, calles y brillo de la pantalla de la placa.
+- **Esfera con foto** — eliges una foto, la ajustas en el círculo (arrastrar / pellizcar), eliges dónde va la hora y la envías a la esfera «Foto» de la placa, que la guarda.
 
 ## Requisitos
 
