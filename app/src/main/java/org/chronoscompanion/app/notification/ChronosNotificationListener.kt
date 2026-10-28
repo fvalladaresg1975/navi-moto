@@ -23,6 +23,9 @@ class ChronosNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "ChronosNotifListener"
+        /** See isRepeat(). */
+        private const val KEY_REPEAT_WINDOW_MS = 10 * 60 * 1000L
+        private const val REPEAT_WINDOW_MS = 5000L
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
 
         // Package name -> ChronosProtocol.AppIcon code. Extend this list as needed;
@@ -171,7 +174,37 @@ class ChronosNotificationListener : NotificationListenerService() {
         // "Title: body" so the firmware's splitTitle() (splits on the first ':' before
         // index 30) shows the sender/title separately from the message body.
         val message = if (title.isNotEmpty()) "$title: $text" else text
+        if (isRepeat(sbn.key, message)) {
+            Log.i(TAG, "Skipping repeated notification [${sbn.packageName}]")
+            return
+        }
         service.sendNotification(iconCode, message)
+    }
+
+    /** Last message forwarded per notification key (with when), and the last one overall. */
+    private val lastByKey = HashMap<String, Pair<String, Long>>()
+    private var lastMessage = ""
+    private var lastMessageAt = 0L
+
+    /**
+     * WhatsApp posts the same message more than once: it re-posts (updates) a chat's
+     * notification with unchanged text - when the chat is read on another device, when
+     * the group summary changes, to refresh its avatar - and sometimes posts it under a
+     * second key a moment later. Each of those reached the watch as another copy ("Holi"
+     * twice). Skip a message that notification already showed in the last
+     * KEY_REPEAT_WINDOW_MS (after that, the same words are taken as a new message), or
+     * that any notification sent in the last REPEAT_WINDOW_MS.
+     */
+    private fun isRepeat(key: String, message: String): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val prev = lastByKey[key]
+        if (prev != null && prev.first == message && now - prev.second < KEY_REPEAT_WINDOW_MS) return true
+        if (message == lastMessage && now - lastMessageAt < REPEAT_WINDOW_MS) return true
+        if (lastByKey.size > 64) lastByKey.clear()
+        lastByKey[key] = message to now
+        lastMessage = message
+        lastMessageAt = now
+        return false
     }
 
     // -------------------------------------------------------------------
