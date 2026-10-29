@@ -115,6 +115,7 @@ class CrashSettingsActivity : AppCompatActivity() {
                 !CrashPrefs.isEnabled(this) -> R.string.crash_state_off
                 CrashPrefs.contacts(this).isEmpty() -> R.string.crash_state_no_contacts
                 !CrashPrefs.canSendSms(this) -> R.string.crash_need_sms
+                ChronosBleService.instance?.crashSpeedMissing() == true -> R.string.crash_need_gps
                 ChronosBleService.status != ChronosBleService.Status.CONNECTED -> R.string.crash_state_not_connected
                 else -> R.string.crash_state_on
             }

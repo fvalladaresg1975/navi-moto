@@ -109,6 +109,9 @@ class ChronosBleService : Service() {
         /** Not a write: asks for a bigger MTU, serialised with the writes (one GATT
          * operation at a time) by riding the same queue. */
         private const val KIND_MTU = 8
+        /** GPS speed for the crash detector: only the newest one matters. */
+        private const val KIND_CRASH_SPEED = 9
+        private const val CRASH_SPEED_EVERY_MS = 3000L
         /** What the watch's NimBLE accepts (ChronosESP32 sets 517): 512-byte writes. */
         private const val PHOTO_MTU = 517
         /** After the last photo write: the watch checks, decodes and saves it to flash -
@@ -284,6 +287,7 @@ class ChronosBleService : Service() {
     override fun onDestroy() {
         turnBeeper.release()
         stopMapsSpeed(sendHide = false)
+        stopCrashSpeed()
         stopRouteDemo()
         stopRoute()
         stopTimeSyncTimer()
@@ -526,6 +530,7 @@ class ChronosBleService : Service() {
                 mtu = 23
                 mainHandler.post { finishPhoto(0) }
                 mainHandler.post { crashResponder.onDisconnected() }
+                mainHandler.post { stopCrashSpeed() }
                 resetNavState()
                 // The watch may reboot before the next connection: assume it holds no
                 // streets, and start the next street upload with a clear in case it does.
@@ -683,7 +688,61 @@ class ChronosBleService : Service() {
     /** Tells the watch whether to watch for crashes (the settings screen calls it on change). */
     fun sendCrashConfig() {
         if (status != Status.CONNECTED || !sessionStarted) return
-        enqueuePacket(ChronosProtocol.buildCrashConfig(org.chronoscompanion.app.crash.CrashPrefs.isArmed(this)))
+        val armed = org.chronoscompanion.app.crash.CrashPrefs.isArmed(this)
+        enqueuePacket(ChronosProtocol.buildCrashConfig(armed))
+        if (armed) startCrashSpeed() else stopCrashSpeed()
+    }
+
+    /*
+     * The watch only counts an impact if the bike was moving: taking it off its mount
+     * when parking looks just like a crash to its IMU (that sent a real SOS once). So
+     * while crash detection is armed and connected, the GPS speed goes to the watch every
+     * CRASH_SPEED_EVERY_MS - with no fix, nothing is sent and the watch stops watching.
+     */
+    private var crashSpeedActive = false
+    private var crashSpeedSentAtMs = 0L
+
+    private val crashSpeedListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            if (!location.hasSpeed() || status != Status.CONNECTED) return
+            val now = SystemClock.elapsedRealtime()
+            if (now - crashSpeedSentAtMs < CRASH_SPEED_EVERY_MS) return
+            crashSpeedSentAtMs = now
+            coalesce(KIND_CRASH_SPEED)
+            enqueuePacket(ChronosProtocol.buildCrashSpeed((location.speed * 3.6f).toInt()), KIND_CRASH_SPEED)
+        }
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startCrashSpeed() {
+        if (crashSpeedActive || !hasFineLocation()) return
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 0f, crashSpeedListener, Looper.getMainLooper())
+            crashSpeedActive = true
+            Log.i(TAG, "Crash detection: GPS speed feed started")
+        } catch (e: Exception) {
+            Log.w(TAG, "Crash detection: no GPS access", e)
+        }
+    }
+
+    private fun stopCrashSpeed() {
+        if (!crashSpeedActive) return
+        crashSpeedActive = false
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        runCatching { lm.removeUpdates(crashSpeedListener) }
+        Log.i(TAG, "Crash detection: GPS speed feed stopped")
+    }
+
+    /** For the settings screen: armed, but the watch gets no speed (so detects nothing). */
+    fun crashSpeedMissing(): Boolean {
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        return !hasFineLocation() || !lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+            (status == Status.CONNECTED && sessionStarted && !crashSpeedActive)
     }
 
     /** The watch runs a short test countdown, then asks for the test SMS. */

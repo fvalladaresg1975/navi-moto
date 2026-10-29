@@ -146,7 +146,7 @@
     <!-- Crash detection (crash/*) -->
     <string name="button_crash">Detección de caídas</string>
     <string name="crash_title">Detección de caídas</string>
-    <string name="crash_description">Si el navegador detecta un golpe fuerte y luego la moto tumbada, muestra una cuenta regresiva de 30 segundos y el celular suena. Si nadie toca «Estoy bien», el celular envía un SMS con tu ubicación a tus contactos de emergencia.</string>
+    <string name="crash_description">Si el navegador detecta un golpe fuerte y luego la moto tumbada, muestra una cuenta regresiva de 30 segundos y el celular suena. Si nadie toca «Estoy bien», el celular envía un SMS con tu ubicación a tus contactos de emergencia.\n\nSolo vigila si la moto venía a más de 20 km/h según el GPS del celular, así que sacar el navegador del anclaje con la moto detenida no dispara nada. Sin GPS no detecta caídas.</string>
     <string name="crash_switch">Detección de caídas</string>
     <string name="crash_contacts_label">Contactos de emergencia (hasta 3)</string>
     <string name="crash_add_contact">Agregar contacto</string>
@@ -164,6 +164,7 @@
     <string name="crash_state_not_connected">Activada. Empieza a vigilar cuando el navegador se conecte.</string>
     <string name="crash_state_on">Activada: el navegador está vigilando.</string>
     <string name="crash_need_sms">Sin permiso para enviar SMS, la detección no puede avisar a nadie.</string>
+    <string name="crash_need_gps">Activada, pero sin GPS: activa la ubicación del celular (y el permiso de ubicación precisa). Sin la velocidad del GPS el navegador no detecta caídas.</string>
     <string name="crash_channel_alarm">Alarma de caída</string>
     <string name="crash_channel_info">Avisos de caída</string>
     <string name="crash_alarm_title">¿Estás bien? Posible caída detectada</string>

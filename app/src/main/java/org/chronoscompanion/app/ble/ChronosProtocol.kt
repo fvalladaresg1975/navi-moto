@@ -544,6 +544,11 @@ object ChronosProtocol {
     fun buildCrashResult(sent: Int): ByteArray =
         buildPacket(0xCC, 0x03, byteArrayOf(sent.coerceIn(0, 255).toByte()))
 
+    /** GPS speed for the crash detector: the watch only counts an impact if the bike was
+     * moving (firmware navi_crash.cpp, CRASH_MOVING_KMH). */
+    fun buildCrashSpeed(kmh: Int): ByteArray =
+        buildPacket(0xCC, 0x04, byteArrayOf(kmh.coerceIn(0, 255).toByte()))
+
     /** Watch -> phone {AB 00 04 FF CC 80 event}: one of the CRASH_* codes. */
     fun decodeCrashEvent(bytes: ByteArray): Int? = decodeOwnStatus(bytes, 0xCC)
 
