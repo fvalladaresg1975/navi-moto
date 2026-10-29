@@ -552,6 +552,16 @@ object ChronosProtocol {
     /** Watch -> phone {AB 00 04 FF CC 80 event}: one of the CRASH_* codes. */
     fun decodeCrashEvent(bytes: ByteArray): Int? = decodeOwnStatus(bytes, 0xCC)
 
+    // -------------------------------------------------------------------
+    // Test navigation (0xCD, ours) - see firmware trackTrip() in app_hal.cpp
+    // -------------------------------------------------------------------
+
+    /** True before the route demo's first navigation packet, false after its stop: the
+     * watch then leaves the demo out of its last-trip statistics (firmware 2.4+; older
+     * firmware ignores it). */
+    fun buildTestNavigation(test: Boolean): ByteArray =
+        buildPacket(0xCD, 0x00, byteArrayOf(if (test) 1 else 0))
+
     private fun decodeOwnStatus(bytes: ByteArray, command: Int): Int? {
         if (bytes.size != 7) return null
         if (bytes[0] != 0xAB.toByte() || bytes[3] != 0xFF.toByte() || bytes[5] != 0x80.toByte()) return null

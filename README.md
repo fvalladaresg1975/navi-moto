@@ -2,13 +2,14 @@
 
 App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED 1.75** montada en el manillar en un **navegador para moto**, al estilo Beeline / BaRing. Trabaja junto al firmware de la placa: **[navi-moto-firmware](https://github.com/fvalladaresg1975/navi-moto-firmware)**.
 
-Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xC9) que el firmware decodifica sin modificar la librería.
+Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xCD) que el firmware decodifica sin modificar la librería.
 
 ## Funciones
 
 - **Modo ruta** — comparte un destino desde CoMaps o Google Maps ("Ruta al navegador"): la app calcula la ruta con [Valhalla](https://valhalla1.openstreetmap.de) (perfil moto, evitar autopistas/peajes; OSRM de respaldo) y la placa dibuja el camino por delante, con flecha y distancia del próximo giro, voz en español, pitido antes de cada giro, recálculo al salirse de la ruta y estimación de avance en túneles.
 - **Calles alrededor** — calles de OpenStreetMap ([Overpass](https://overpass-api.de)) dibujadas tenues bajo la ruta. Las de toda la ruta se guardan en el teléfono al compartirla (cuadrantes de ~1 km, reutilizados en rutas siguientes y sin internet, límite automático de 50 MB).
 - **Zoom según la velocidad** — cerca en ciudad, lejos en carretera.
+- **Ruta de prueba** («Probar ruta en el navegador») — una ruta inventada para ver el sistema sin salir; la placa no la guarda como último viaje.
 - **Velocidad y límite** — velocidad GPS y límite de la vía (OpenStreetMap; 50 km/h en calles residenciales sin dato), con aviso rojo al excederlo.
 - **Navegación de Google Maps** — reenvía las indicaciones y la flecha de Maps, con velocidad y límite.
 - **Notificaciones, llamadas y contactos** — WhatsApp, SMS, etc.; contestar/rechazar y llamar desde la placa.

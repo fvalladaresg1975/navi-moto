@@ -1421,8 +1421,8 @@ class ChronosBleService : Service() {
     // --- Demo, for filming the system: route mode through a made-up city, then arrow mode
     // (Google Maps style). See RouteDemo. Everything goes through the real paths - nav data,
     // icons, route frames with rider pose, street upload, speed info, beep - so the video
-    // shows exactly what a ride does. The remaining distance is a real figure now, so the
-    // watch's "Viaje" app records the demo as the last trip.
+    // shows exactly what a ride does. The remaining distance is a real figure, so the watch
+    // would record the demo as the last trip: it is told it is a test (0xCD) instead.
     private var routeDemo: RouteDemo? = null
     private var routeDemoS = 0.0
     private var demoTick = 0
@@ -1596,6 +1596,8 @@ class ChronosBleService : Service() {
         streetsRoute = null
         streetsNeedClear = true
         routeScale = Polyline.SCALE_MAX_PX_PER_M
+        // Ahead of the first navigation packet, so the watch never counts the demo as a trip.
+        enqueuePacket(ChronosProtocol.buildTestNavigation(true))
         mainHandler.post(routeDemoRunnable)
         org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
@@ -1620,6 +1622,7 @@ class ChronosBleService : Service() {
         }
         sendRouteClear()
         sendNavigationStop()
+        enqueuePacket(ChronosProtocol.buildTestNavigation(false))
         org.chronoscompanion.app.widget.NaviWidget.update(this)
     }
 
