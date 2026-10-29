@@ -168,6 +168,8 @@ class ChronosBleService : Service() {
         const val EXTRA_STATUS = "status"
         const val EXTRA_DEVICE_NAME = "device_name"
         const val ACTION_STOP = "org.chronoscompanion.app.ACTION_STOP"
+        /** "Estoy bien" on the crash alarm notification (crash.CrashResponder). */
+        const val ACTION_CRASH_CANCEL = "org.chronoscompanion.app.ACTION_CRASH_CANCEL"
 
         const val PREFS_NAME = "chronos_prefs"
         const val PREF_DEVICE_NAME = "device_name"
@@ -255,6 +257,10 @@ class ChronosBleService : Service() {
             Log.i(TAG, "Stop requested from notification action")
             stopSelf()
             return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_CRASH_CANCEL) {
+            crashResponder.cancelFromPhone()
+            return START_STICKY
         }
         startForeground()
         // The service is a singleton within the process: once running, every extra
@@ -519,6 +525,7 @@ class ChronosBleService : Service() {
                 writeInFlight = false
                 mtu = 23
                 mainHandler.post { finishPhoto(0) }
+                mainHandler.post { crashResponder.onDisconnected() }
                 resetNavState()
                 // The watch may reboot before the next connection: assume it holds no
                 // streets, and start the next street upload with a clear in case it does.
@@ -627,6 +634,8 @@ class ChronosBleService : Service() {
             ChronosProtocol.decodeWatchCommand(value)?.let { handleWatchCommand(it) }
             ChronosProtocol.decodeDialContactIndex(value)?.let { dialContactAt(it) }
             ChronosProtocol.decodePhotoStatus(value)?.let { s -> mainHandler.post { finishPhoto(s) } }
+            ChronosProtocol.decodeOtaStatus(value)?.let { s -> mainHandler.post { onOtaStatus(s) } }
+            ChronosProtocol.decodeCrashEvent(value)?.let { e -> mainHandler.post { crashResponder.onWatchEvent(e) } }
             ChronosProtocol.decodeBrightness(value)?.let { level ->
                 mainHandler.post {
                     watchBrightness = level
@@ -650,6 +659,72 @@ class ChronosBleService : Service() {
         // And tell it this phone's battery (then again on every change, see below).
         lastSentPhoneBattery = -1
         sendPhoneBattery()
+        // Crash detection: the watch only watches once told so, on every connection.
+        sendCrashConfig()
+    }
+
+    // ---------------------------------------------------------------------
+    // Crash detection (0xCC) - see crash.CrashResponder
+    // ---------------------------------------------------------------------
+
+    private val crashResponder by lazy {
+        org.chronoscompanion.app.crash.CrashResponder(
+            this,
+            send = { packet -> if (status == Status.CONNECTED) enqueuePacket(packet) },
+            cancelIntent = {
+                PendingIntent.getService(
+                    this, 42, Intent(this, ChronosBleService::class.java).setAction(ACTION_CRASH_CANCEL),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            }
+        )
+    }
+
+    /** Tells the watch whether to watch for crashes (the settings screen calls it on change). */
+    fun sendCrashConfig() {
+        if (status != Status.CONNECTED || !sessionStarted) return
+        enqueuePacket(ChronosProtocol.buildCrashConfig(org.chronoscompanion.app.crash.CrashPrefs.isArmed(this)))
+    }
+
+    /** The watch runs a short test countdown, then asks for the test SMS. */
+    fun startCrashTest() {
+        if (status != Status.CONNECTED) return
+        enqueuePacket(ChronosProtocol.buildCrashTest())
+    }
+
+    // ---------------------------------------------------------------------
+    // Firmware update over WiFi (0xCB) - see ota.FirmwareUpdateActivity
+    // ---------------------------------------------------------------------
+
+    interface OtaListener {
+        /** One of the ChronosProtocol.OTA_* codes. Main thread. */
+        fun onOtaStatus(status: Int)
+    }
+
+    /** Set by FirmwareUpdateActivity while it is open. Main thread. */
+    var otaListener: OtaListener? = null
+
+    /** Asks the watch to open its access point; its answers go to [otaListener]. */
+    fun startOta(ssid: String, password: String): Boolean {
+        if (status != Status.CONNECTED || !sessionStarted) return false
+        enqueuePacket(ChronosProtocol.buildOtaStart(ssid, password))
+        return true
+    }
+
+    fun cancelOta() {
+        if (status == Status.CONNECTED) enqueuePacket(ChronosProtocol.buildOtaCancel())
+    }
+
+    private fun onOtaStatus(s: Int) {
+        Log.i(TAG, "Watch OTA status $s")
+        val l = otaListener
+        if (l != null) {
+            l.onOtaStatus(s)
+        } else if (s == ChronosProtocol.OTA_UPDATED) {
+            toast(R.string.ota_notif_updated)
+        } else if (s == ChronosProtocol.OTA_ROLLED_BACK) {
+            toast(R.string.ota_notif_rolled_back)
+        }
     }
 
     // ---------------------------------------------------------------------

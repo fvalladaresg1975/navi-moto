@@ -110,6 +110,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.photoFaceButton).setOnClickListener {
             startActivity(Intent(this, org.chronoscompanion.app.photo.PhotoFaceActivity::class.java))
         }
+        findViewById<MaterialButton>(R.id.crashButton).setOnClickListener {
+            startActivity(Intent(this, org.chronoscompanion.app.crash.CrashSettingsActivity::class.java))
+        }
+        findViewById<MaterialButton>(R.id.firmwareButton).setOnClickListener {
+            startActivity(Intent(this, org.chronoscompanion.app.ota.FirmwareUpdateActivity::class.java))
+        }
         routeDemoButton = findViewById(R.id.routeDemoButton)
         routeDemoButton.setOnClickListener {
             val service = ChronosBleService.instance ?: return@setOnClickListener

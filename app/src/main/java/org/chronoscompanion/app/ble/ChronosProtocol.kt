@@ -491,6 +491,69 @@ object ChronosProtocol {
         return bytes[6].toInt() and 0xFF
     }
 
+    // -------------------------------------------------------------------
+    // Firmware update over WiFi (0xCB, ours) - see firmware hal/esp32/navi_ota.cpp
+    // -------------------------------------------------------------------
+
+    const val OTA_READY = 1
+    const val OTA_ERR_BATTERY = 2
+    const val OTA_ERR_WIFI = 3
+    const val OTA_ERR_TIMEOUT = 4
+    const val OTA_ERR_FAILED = 5
+    const val OTA_UPDATED = 6
+    const val OTA_ROLLED_BACK = 7
+    const val OTA_CANCELLED = 8
+
+    /** Open the board's access point [ssid] with WPA2 [password] (8-63 ASCII). */
+    fun buildOtaStart(ssid: String, password: String): ByteArray {
+        val s = ssid.toByteArray(Charsets.US_ASCII)
+        val p = password.toByteArray(Charsets.US_ASCII)
+        val payload = ByteArray(2 + s.size + p.size)
+        payload[0] = s.size.toByte()
+        s.copyInto(payload, 1)
+        payload[1 + s.size] = p.size.toByte()
+        p.copyInto(payload, 2 + s.size)
+        return buildPacket(0xCB, 0x00, payload)
+    }
+
+    fun buildOtaCancel(): ByteArray = buildPacket(0xCB, 0x01, ByteArray(0))
+
+    /** Watch -> phone {AB 00 04 FF CB 80 status}: one of the OTA_* codes. */
+    fun decodeOtaStatus(bytes: ByteArray): Int? = decodeOwnStatus(bytes, 0xCB)
+
+    // -------------------------------------------------------------------
+    // Crash detection (0xCC, ours) - see firmware hal/esp32/navi_crash.cpp
+    // -------------------------------------------------------------------
+
+    const val CRASH_CANCELLED = 0
+    const val CRASH_SOS = 1
+    const val CRASH_COUNTDOWN = 2
+    const val CRASH_TEST_SOS = 3
+    const val CRASH_TEST_COUNTDOWN = 4
+
+    fun buildCrashConfig(enabled: Boolean): ByteArray =
+        buildPacket(0xCC, 0x00, byteArrayOf(if (enabled) 1 else 0))
+
+    /** The board runs a short test countdown and then asks for the test message. */
+    fun buildCrashTest(): ByteArray = buildPacket(0xCC, 0x01, ByteArray(0))
+
+    /** "Estoy bien" pressed on the phone: closes the board's countdown. */
+    fun buildCrashCancel(): ByteArray = buildPacket(0xCC, 0x02, ByteArray(0))
+
+    /** How many contacts got the SOS (0 = none), shown on the board. */
+    fun buildCrashResult(sent: Int): ByteArray =
+        buildPacket(0xCC, 0x03, byteArrayOf(sent.coerceIn(0, 255).toByte()))
+
+    /** Watch -> phone {AB 00 04 FF CC 80 event}: one of the CRASH_* codes. */
+    fun decodeCrashEvent(bytes: ByteArray): Int? = decodeOwnStatus(bytes, 0xCC)
+
+    private fun decodeOwnStatus(bytes: ByteArray, command: Int): Int? {
+        if (bytes.size != 7) return null
+        if (bytes[0] != 0xAB.toByte() || bytes[3] != 0xFF.toByte() || bytes[5] != 0x80.toByte()) return null
+        if ((bytes[4].toInt() and 0xFF) != command) return null
+        return bytes[6].toInt() and 0xFF
+    }
+
     private fun putU32(p: ByteArray, o: Int, v: Long) {
         p[o] = ((v shr 24) and 0xFF).toByte()
         p[o + 1] = ((v shr 16) and 0xFF).toByte()

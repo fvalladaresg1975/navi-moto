@@ -33,7 +33,19 @@
          handlebar mount, which is this project's main use case. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
+    <!-- Crash detection: text the emergency contacts the rider's location. -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Firmware update over WiFi: join the watch's own access point for this app only
+         (WifiNetworkSpecifier). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
     <!-- Android 11+ hides other apps' info by default (package visibility) unless the
          app declares what it needs to see. NotificationAppsActivity lists every
@@ -73,6 +85,14 @@
 
         <activity
             android:name=".photo.PhotoFaceActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ota.FirmwareUpdateActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".crash.CrashSettingsActivity"
             android:exported="false" />
 
         <!-- Route mode entry point: a destination shared from CoMaps, Google Maps, etc.

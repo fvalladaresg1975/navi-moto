@@ -16,6 +16,8 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Batería del teléfono** en el panel de control de la placa.
 - **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido, calles y brillo de la pantalla de la placa.
 - **Esfera con foto** — eliges una foto, la ajustas en el círculo (arrastrar / pellizcar), eliges dónde va la hora y la envías a la esfera «Foto» de la placa, que la guarda.
+- **Actualizar firmware del navegador** — eliges el `firmware.bin` y la app se lo envía a la placa por la red WiFi propia de la placa (sin cable USB). Solo acepta firmwares que también se pueden actualizar por WiFi.
+- **Detección de caídas** — hasta 3 contactos de emergencia; si la placa detecta una caída y nadie toca «Estoy bien», el celular les envía un SMS con tu ubicación (y opcionalmente llama al primero). Incluye un botón de prueba.
 
 ## Requisitos
 

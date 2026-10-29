@@ -111,4 +111,68 @@
     <string name="photo_err_memory">El navegador no tuvo espacio para guardar la foto.</string>
     <string name="photo_err_no_answer">El navegador no respondió. Revisa la conexión e inténtalo de nuevo.</string>
     <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
+
+    <!-- Firmware update over WiFi (ota/FirmwareUpdateActivity) -->
+    <string name="button_firmware_update">Actualizar firmware del navegador</string>
+    <string name="ota_title">Actualizar firmware</string>
+    <string name="ota_description">Elige el archivo firmware.bin (por ejemplo, desde la carpeta de respaldos en Drive). El navegador abre su propia red WiFi, el celular se conecta a ella y le envía el firmware; no hace falta el cable USB. Si el firmware nuevo no arranca bien, apaga y enciende el navegador: vuelve solo a la versión anterior.</string>
+    <string name="ota_pick">Elegir archivo firmware.bin</string>
+    <string name="ota_no_file">Ningún archivo elegido.</string>
+    <string name="ota_file_info">%1$s\n%2$s MB · compilado el %3$s</string>
+    <string name="ota_send">Actualizar el navegador</string>
+    <string name="ota_asking">Pidiendo al navegador que abra su red WiFi…</string>
+    <string name="ota_joining">Conectando a la red del navegador… Si Android pregunta, toca «Conectar».</string>
+    <string name="ota_sending">Enviando el firmware… %1$d%%</string>
+    <string name="ota_checking">Revisando el firmware en el navegador…</string>
+    <string name="ota_restarting">Firmware enviado. El navegador se reinicia y se vuelve a conectar…</string>
+    <string name="ota_updated">Listo: el navegador quedó con el firmware nuevo.</string>
+    <string name="ota_rolled_back">El firmware nuevo no arrancó bien y el navegador volvió a la versión anterior.</string>
+    <string name="ota_restart_no_news">El firmware se envió, pero el navegador aún no confirma. Revisa que se haya vuelto a conectar.</string>
+    <string name="ota_cancelled">Actualización cancelada.</string>
+    <string name="ota_err_no_answer">El navegador no respondió. ¿Tiene el firmware con actualización por WiFi?</string>
+    <string name="ota_err_battery">Batería del navegador baja: cárgalo (al menos 30 %) o conéctalo al cargador.</string>
+    <string name="ota_err_wifi">El navegador no pudo abrir su red WiFi. Inténtalo de nuevo.</string>
+    <string name="ota_err_join">El celular no pudo conectarse a la red del navegador.</string>
+    <string name="ota_err_transfer">Se cortó el envío. El navegador sigue con su firmware actual; inténtalo de nuevo.</string>
+    <string name="ota_err_verify">El firmware llegó dañado o no es válido. El navegador sigue con su firmware actual.</string>
+    <string name="ota_err_not_firmware">Ese archivo no es un firmware (.bin) del navegador.</string>
+    <string name="ota_err_wrong_chip">Ese firmware es para otro modelo de placa.</string>
+    <string name="ota_err_too_big">Ese firmware no cabe en el navegador.</string>
+    <string name="ota_err_no_wifi_update">Ese firmware no trae la actualización por WiFi: después habría que volver al cable USB. Usa uno compilado desde el 28-10-2026.</string>
+    <string name="ota_err_android">Esta función necesita Android 10 o superior.</string>
+    <string name="ota_notif_updated">Navegador actualizado con el firmware nuevo.</string>
+    <string name="ota_notif_rolled_back">La actualización del navegador falló: volvió a la versión anterior.</string>
+
+    <!-- Crash detection (crash/*) -->
+    <string name="button_crash">Detección de caídas</string>
+    <string name="crash_title">Detección de caídas</string>
+    <string name="crash_description">Si el navegador detecta un golpe fuerte y luego la moto tumbada, muestra una cuenta regresiva de 30 segundos y el celular suena. Si nadie toca «Estoy bien», el celular envía un SMS con tu ubicación a tus contactos de emergencia.</string>
+    <string name="crash_switch">Detección de caídas</string>
+    <string name="crash_contacts_label">Contactos de emergencia (hasta 3)</string>
+    <string name="crash_add_contact">Agregar contacto</string>
+    <string name="crash_no_contacts">Aún no hay contactos.</string>
+    <string name="crash_contact_row">%1$s\n%2$s</string>
+    <string name="crash_remove">Quitar</string>
+    <string name="crash_name_label">Tu nombre (va en el mensaje)</string>
+    <string name="crash_name_hint">Tu nombre</string>
+    <string name="crash_call_first">Además, llamar al primer contacto después del SMS</string>
+    <string name="crash_test">Probar</string>
+    <string name="crash_test_hint">La prueba muestra una cuenta regresiva de 10 segundos en el navegador y luego envía un SMS que dice «PRUEBA» a tus contactos (no llama). Avísales antes.</string>
+    <string name="crash_test_started">Mira el navegador: al terminar la cuenta regresiva se envía el SMS de prueba.</string>
+    <string name="crash_state_off">Desactivada.</string>
+    <string name="crash_state_no_contacts">Agrega al menos un contacto de emergencia.</string>
+    <string name="crash_state_not_connected">Activada. Empieza a vigilar cuando el navegador se conecte.</string>
+    <string name="crash_state_on">Activada: el navegador está vigilando.</string>
+    <string name="crash_need_sms">Sin permiso para enviar SMS, la detección no puede avisar a nadie.</string>
+    <string name="crash_channel_alarm">Alarma de caída</string>
+    <string name="crash_channel_info">Avisos de caída</string>
+    <string name="crash_alarm_title">¿Estás bien? Posible caída detectada</string>
+    <string name="crash_alarm_test_title">Prueba de caída</string>
+    <string name="crash_alarm_text">Si no respondes, se enviará tu ubicación a tus contactos de emergencia.</string>
+    <string name="crash_im_ok">Estoy bien</string>
+    <string name="crash_sos_failed">No se pudo enviar el aviso de caída (sin contactos, sin permiso o sin señal).</string>
+    <plurals name="crash_sos_sent">
+        <item quantity="one">Aviso de caída enviado a %d contacto.</item>
+        <item quantity="other">Aviso de caída enviado a %d contactos.</item>
+    </plurals>
 </resources>

@@ -129,6 +129,20 @@
             android:layout_height="wrap_content"
             android:text="@string/button_photo_face" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/crashButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_crash" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/firmwareButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_firmware_update" />
+
         <!-- Route mode, phase 1: drives a made-up road on the watch to judge the view. -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/routeDemoButton"
