@@ -4,6 +4,12 @@ App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED
 
 Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xCD) que el firmware decodifica sin modificar la librería.
 
+## Imágenes
+
+| Inicio | Ajustes | Detección de caídas | Actualizar firmware |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/images/app-principal.png" alt="Pantalla principal de la app" width="210"> | <img src="docs/images/app-ajustes.png" alt="Ajustes de la app" width="210"> | <img src="docs/images/app-caidas.png" alt="Detección de caídas, sin datos personales" width="210"> | <img src="docs/images/app-firmware.png" alt="Actualización de firmware" width="210"> |
+
 ## Funciones
 
 - **Modo ruta** — comparte un destino desde CoMaps o Google Maps ("Ruta al navegador"): la app calcula la ruta con [Valhalla](https://valhalla1.openstreetmap.de) (perfil moto, evitar autopistas/peajes; OSRM de respaldo) y la placa dibuja el camino por delante, con flecha y distancia del próximo giro, voz en español, pitido antes de cada giro, recálculo al salirse de la ruta y estimación de avance en túneles.
