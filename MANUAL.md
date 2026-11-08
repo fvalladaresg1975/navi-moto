@@ -80,7 +80,16 @@ En la app toca **Probar ruta en el navegador**: la placa recorre una ruta invent
 
 1. Revisa que la app tenga **acceso a notificaciones** (paso 2 de la primera vez) y que Google Maps tenga sus notificaciones activadas en Android.
 2. Con la placa conectada, abre **Google Maps**, elige el destino y toca **Iniciar**.
-3. La placa abre la navegación sola: muestra la flecha de Google Maps, los metros hasta la maniobra, la indicación escrita, tu velocidad y el límite. La línea de abajo resume lo que falta.
+3. La placa abre la navegación sola.
+
+### Qué ves en la placa
+
+- **Arriba al centro**: la flecha de la próxima maniobra, la misma que dibuja Google Maps.
+- **Número a la izquierda**: tu velocidad (del GPS del celular). Se pone roja si pasas el límite.
+- **Círculo rojo**: el límite de velocidad de la vía, cuando se conoce.
+- **Al centro**: los metros hasta la maniobra y la indicación escrita («En la rotonda, toma la segunda salida»).
+- **Abajo**: tiempo que falta · distancia que falta · hora de llegada.
+- **Anillo naranja**: cuánto falta para la maniobra; se llena a medida que te acercas.
 
 Para terminar, sal de la navegación en Google Maps, o en la placa **desliza hacia la izquierda** y toca **Salir**: la app cierra la navegación de Google Maps en el celular.
 
@@ -128,7 +137,44 @@ Desde la esfera (la pantalla con la hora):
 | Deslizar hacia la derecha | Notificaciones |
 | Mantener presionado | Elegir otra esfera |
 
-<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-pixel-moto.png" alt="Esfera Pixel Moto" width="200"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-tablero.png" alt="Esfera Tablero" width="200"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/placa-control.png" alt="Panel de control" width="200">
+### Esferas
+
+La esfera es la pantalla con la hora. Para cambiarla, **mantén presionada** la esfera y elige otra. Todas muestran la hora del celular y se actualizan solas con el clima que envía la app.
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-pixel-moto.png" alt="Esfera Pixel Moto" width="220">
+
+**Pixel Moto** — la hora grande con la fecha y, debajo, cuatro datos: temperatura, viento, batería de la placa y batería del celular (con un rayo si están cargando). Arriba, la moto con un punto verde cuando la placa está conectada al celular. Abajo, el último viaje (distancia y duración).
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-tablero.png" alt="Esfera Tablero" width="220">
+
+**Tablero** — la hora como un tacómetro: la aguja marca la hora en una escala de 0 a 12. **BT** en verde = conectada al celular. La barra **E–F** es la batería de la placa, como un medidor de bencina. Al lado, la temperatura y el clima; abajo, **TRIP** con la distancia del último viaje.
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-clima-ruta.png" alt="Esfera Clima de ruta" width="220">
+
+**Clima de ruta** — para decidir si salir: la temperatura de ahora y las próximas 5 horas, cada una con su probabilidad de lluvia. Debajo, un resumen («Sin lluvia en 5 horas» o «Lluvia desde las 16 h»), el viento y la hora del atardecer. Los arcos del borde son las baterías, a la izquierda la placa y a la derecha el celular: se llenan con la carga y son verdes, naranjos bajo 50 % y rojos bajo 20 % (azules mientras cargan).
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-copiloto.png" alt="Esfera Copiloto" width="220">
+
+**Copiloto** — la hora gigante y en alto contraste, para leerla de un vistazo en marcha. Abajo, si está conectada al celular y la temperatura. Los arcos del borde son las baterías, como en Clima de ruta.
+
+**Foto** — una foto tuya de fondo con la hora encima. Se elige y se ajusta en la app (mira la [sección 9](#9-otras-funciones)).
+
+### Panel de control (deslizar hacia abajo)
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/placa-control.png" alt="Panel de control" width="220">
+
+- **Arriba**: batería de la placa y del celular, en porcentaje. Los arcos del borde muestran lo mismo: la placa a la izquierda, el celular a la derecha.
+- **Botones del centro**: canción anterior, reproducir / pausa y canción siguiente de la música del celular.
+- **Botones de abajo**: bajar y subir el volumen del celular.
+- **Ícono de Bluetooth**: en color cuando la placa está conectada al celular.
+
+Desliza hacia arriba (o toca la flecha de abajo) para volver. Durante la navegación, este panel se abre igual deslizando hacia abajo.
+
+### Clima (deslizar hacia arriba)
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/placa-clima.png" alt="Pantalla del clima" width="220">
+
+El clima de tu ubicación: ícono, temperatura y la hora en que la app lo actualizó. La app lo envía al conectarse y cada 30 minutos.
 
 ## 8. Ajustes de la app
 
@@ -164,8 +210,28 @@ El **pitido** y las **calles** también se cambian desde el widget de Navi Moto 
 
 ## 9. Otras funciones
 
-- **Detección de caídas**: en la app, **Detección de caídas**. Agrega hasta 3 contactos de emergencia y actívala. Solo vigila con la moto en marcha (más de 20 km/h según el GPS del celular). Si detecta una caída, la placa cuenta 30 segundos; si nadie toca **Estoy bien**, el celular envía un SMS con tu ubicación. El botón **Probar** envía un SMS que dice «PRUEBA»: avísales antes a tus contactos.
-- **Batería baja**: la placa avisa al 15 %. Al 5 % cuenta 30 segundos y se apaga, salvo que toques **Seguir encendida**. Durante la navegación solo muestra avisos pequeños y sigue encendida hasta que la batería está casi vacía. Se vuelve a encender con **PWR**.
+### Detección de caídas
+
+<img src="docs/images/app-caidas.png" alt="Detección de caídas en la app" width="220"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/aviso-caida.png" alt="Cuenta regresiva de posible caída" width="220">
+
+**Activarla**: en la app, **Detección de caídas**. Agrega hasta 3 contactos de emergencia y activa el interruptor. El botón **Probar** envía de verdad un SMS que dice «PRUEBA»: avísales antes a tus contactos.
+
+**Cómo funciona**: el sensor de la placa busca un golpe fuerte seguido de la moto tumbada, y solo cuenta si venías a más de 20 km/h según el GPS del celular (sacar la placa del anclaje estacionado no la dispara). Entonces la placa se pone roja y cuenta 30 segundos:
+
+- Si estás bien, toca **Estoy bien** y no pasa nada.
+- Si nadie lo toca, el celular envía a tus contactos un SMS con tu ubicación.
+
+### Batería baja de la placa
+
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/aviso-bateria.png" alt="Cuenta regresiva de batería muy baja" width="220">
+
+- Al **15 %** la placa muestra un aviso.
+- Al **5 %** se pone naranja y cuenta 30 segundos para apagarse. Toca **Seguir encendida** si la necesitas un rato más.
+- Durante la navegación solo muestra avisos pequeños y sigue encendida hasta que la batería está casi vacía; si hay una posible caída en curso, esa siempre tiene prioridad.
+- Para volver a encenderla, presiona **PWR** (mejor con el cargador conectado).
+
+### Más funciones
+
 - **Actualizar el firmware sin cable**: en la app, **Actualizar firmware del navegador**, elige el `.bin` de tu placa (1.75 o 1.75C) desde la [página de versiones](https://github.com/fvalladaresg1975/navi-moto-firmware/releases) y toca **Actualizar el navegador**. Si el firmware nuevo falla, la placa vuelve sola a la versión anterior.
 - **Esfera con foto**: en la app, **Esfera con foto**. Elige una foto, ajústala en el círculo y envíala; luego, en la placa, mantén presionada la esfera y elige **Foto**.
 - **Notificaciones**: en la app, **Elegir apps de notificaciones** decide qué apps llegan a la placa. Las llamadas se explican en la [sección 8](#8-ajustes-de-la-app).
