@@ -93,6 +93,8 @@ La navegación de **CoMaps** se ve en la placa igual que el modo ruta: el camino
 1. Instala o actualiza **CoMaps** (versión de agosto de 2026 o más nueva).
 2. En la app Navi Moto activa **Seguir la navegación de CoMaps** y acepta el permiso de CoMaps que pide Android.
 
+<img src="docs/images/app-comaps.png" alt="Interruptor Seguir la navegación de CoMaps" width="400">
+
 ### Navegar
 
 1. Con la placa conectada, abre **CoMaps**, elige el destino y toca **Iniciar**.
@@ -128,13 +130,45 @@ Desde la esfera (la pantalla con la hora):
 
 <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-pixel-moto.png" alt="Esfera Pixel Moto" width="200"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/esfera-tablero.png" alt="Esfera Tablero" width="200"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/placa-control.png" alt="Panel de control" width="200">
 
-## 8. Otras funciones
+## 8. Ajustes de la app
+
+En la pantalla principal de la app, más abajo, están estos interruptores. Quedan guardados: basta con activarlos una vez.
+
+### Mostrar llamadas entrantes en el navegador
+
+<img src="docs/images/app-llamadas.png" alt="Interruptor Mostrar llamadas entrantes en el navegador" width="400">
+
+Cuando entra una llamada, la placa muestra quién llama (con su nombre si está en tus contactos) y puedes contestarla o rechazarla desde la placa. Al activarlo, Android pide los permisos de teléfono, registro de llamadas y contactos; si no los das todos, el interruptor se vuelve a apagar.
+
+Con **Elegir contactos del navegador** escoges hasta 20 contactos que aparecen en la placa: si tocas uno, el celular lo llama.
+
+### Seguir la navegación de CoMaps
+
+<img src="docs/images/app-comaps.png" alt="Interruptor Seguir la navegación de CoMaps" width="400">
+
+Muestra en la placa la navegación que inicias en CoMaps. Al activarlo, Android pide el permiso de CoMaps. Cómo se usa: [sección 5](#5-modo-comaps).
+
+### Pitido antes de cada giro
+
+<img src="docs/images/app-pitido.png" alt="Interruptor Pitido antes de cada giro" width="400">
+
+Un pitido corto en el momento de girar, unos 2 segundos antes de la esquina, después de la indicación con voz. Al llegar al destino suena un pitido doble. Suena en el celular o en el intercomunicador Bluetooth del casco, igual que la voz (la placa no tiene parlante). Funciona en los tres modos.
+
+### Mostrar calles alrededor (modo ruta)
+
+<img src="docs/images/app-calles.png" alt="Interruptor Mostrar calles alrededor y calles guardadas" width="400">
+
+Dibuja tenues las calles de la zona bajo el camino, en el modo ruta y en el modo CoMaps. Se descargan de OpenStreetMap al empezar la ruta y quedan guardadas en el celular, así que otra ruta por la misma zona las usa sin internet. Sobre 50 MB se borran solas las que llevan más tiempo sin usarse; **Borrar calles guardadas** las borra todas. Apagado, la placa muestra solo el camino.
+
+El **pitido** y las **calles** también se cambian desde el widget de Navi Moto en la pantalla de inicio de Android.
+
+## 9. Otras funciones
 
 - **Detección de caídas**: en la app, **Detección de caídas**. Agrega hasta 3 contactos de emergencia y actívala. Solo vigila con la moto en marcha (más de 20 km/h según el GPS del celular). Si detecta una caída, la placa cuenta 30 segundos; si nadie toca **Estoy bien**, el celular envía un SMS con tu ubicación. El botón **Probar** envía un SMS que dice «PRUEBA»: avísales antes a tus contactos.
 - **Batería baja**: la placa avisa al 15 %. Al 5 % cuenta 30 segundos y se apaga, salvo que toques **Seguir encendida**. Durante la navegación solo muestra avisos pequeños y sigue encendida hasta que la batería está casi vacía. Se vuelve a encender con **PWR**.
 - **Actualizar el firmware sin cable**: en la app, **Actualizar firmware del navegador**, elige el `.bin` de tu placa (1.75 o 1.75C) desde la [página de versiones](https://github.com/fvalladaresg1975/navi-moto-firmware/releases) y toca **Actualizar el navegador**. Si el firmware nuevo falla, la placa vuelve sola a la versión anterior.
 - **Esfera con foto**: en la app, **Esfera con foto**. Elige una foto, ajústala en el círculo y envíala; luego, en la placa, mantén presionada la esfera y elige **Foto**.
-- **Notificaciones y llamadas**: en la app, **Elegir apps de notificaciones** decide qué apps llegan a la placa. Las llamadas se contestan o rechazan desde la placa.
+- **Notificaciones**: en la app, **Elegir apps de notificaciones** decide qué apps llegan a la placa. Las llamadas se explican en la [sección 8](#8-ajustes-de-la-app).
 
 ## Problemas frecuentes
 
