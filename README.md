@@ -4,7 +4,7 @@ App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED
 
 Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xCD) que el firmware decodifica sin modificar la librería.
 
-**¿Cómo se usa?** Mira el [manual de uso](https://github.com/fvalladaresg1975/navi-moto-firmware/blob/main/MANUAL.md): primera conexión, modo ruta, modo Google Maps y gestos de la placa.
+**¿Cómo se usa?** Mira el [manual de uso](MANUAL.md): primera conexión, modo ruta, modo Google Maps y gestos de la placa.
 
 ## Imágenes
 
