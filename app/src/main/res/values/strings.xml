@@ -39,6 +39,12 @@
     <string name="button_route_demo_stop">Detener prueba de ruta</string>
     <string name="route_demo_not_connected">Conectá el navegador primero para probar la ruta.</string>
     <string name="label_turn_beep">Pitido antes de cada giro</string>
+    <string name="label_comaps">Seguir la navegación de CoMaps</string>
+    <string name="comaps_info_on">Inicia la navegación en CoMaps y la placa la muestra en modo ruta: el camino de CoMaps, las calles alrededor, tu velocidad y el límite. Las indicaciones con voz las da CoMaps.</string>
+    <string name="comaps_info_off">Actívalo para ver en la placa la navegación de CoMaps, con el camino dibujado. La app te pedirá el permiso de CoMaps.</string>
+    <string name="comaps_not_installed">CoMaps no está instalado en este celular.</string>
+    <string name="comaps_permission_denied">Sin el permiso de CoMaps la placa no puede mostrar su navegación. Puedes darlo en Ajustes → Apps → Navi Moto → Permisos.</string>
+    <string name="comaps_nav_continues">La placa salió de la navegación; CoMaps sigue navegando en el celular.</string>
     <string name="label_street_map">Mostrar calles alrededor (modo ruta)</string>
     <string name="widget_description">Estado del navegador, conectar, detener la ruta, pitido, calles y brillo de la pantalla</string>
     <string name="widget_status_stopped">Detenido</string>

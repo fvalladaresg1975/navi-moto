@@ -17,7 +17,10 @@ import java.io.File
  * service's job (ChronosBleService.maybeReroute). While off route, [s] holds its last
  * on-route value.
  */
-class RouteTracker(private val route: Route, context: Context, appendTrace: Boolean = false) {
+class RouteTracker(private val route: Route, context: Context, appendTrace: Boolean = false,
+                   /** Where along the road the rider probably is before the first fix: 0 for
+                    * a route that starts here; CoMaps' completion when joining one mid-way. */
+                   private val startS: Double = 0.0) {
 
     companion object {
         private const val TAG = "ChronosRoute"
@@ -26,7 +29,7 @@ class RouteTracker(private val route: Route, context: Context, appendTrace: Bool
         const val TRACE_FILE = "route_trace.csv"
     }
 
-    var s = 0.0
+    var s = startS
         private set
     var lateralM = 0.0
         private set
@@ -66,8 +69,8 @@ class RouteTracker(private val route: Route, context: Context, appendTrace: Bool
         // since the rider may have rolled a bit between "Iniciar" and the first fix.
         // After a gap (tunnel) s was dead-reckoned and may be slightly ahead of the truth;
         // look further back so the returning fix can still be matched.
-        val from = if (firstFix) 0.0 else s - (if (dtS > 3) 250 else 50)
-        val to = if (firstFix) 1500.0 else s + 200 + speed * dtS * 2
+        val from = if (firstFix) startS - 1000 else s - (if (dtS > 3) 250 else 50)
+        val to = if (firstFix) startS + 1500.0 else s + 200 + speed * dtS * 2
         val hit = route.road.project(x, y, from, to)
         val before = s
         val threshold = maxOf(MAX_LATERAL_M, fix.accuracy + 30.0)

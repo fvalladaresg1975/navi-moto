@@ -4,7 +4,7 @@ App Android que convierte una pantalla redonda **Waveshare ESP32-S3 Touch AMOLED
 
 Empezó como una alternativa abierta a la app oficial de Chronos para relojes con el firmware [ChronosESP32 de fbiego](https://github.com/fbiego/chronos-esp32), y conserva su protocolo Bluetooth LE, más comandos propios (0xC1-0xCD) que el firmware decodifica sin modificar la librería.
 
-**¿Cómo se usa?** Mira el [manual de uso](MANUAL.md): primera conexión, modo ruta, modo Google Maps y gestos de la placa.
+**¿Cómo se usa?** Mira el [manual de uso](MANUAL.md): primera conexión, modo ruta, modo Google Maps, modo CoMaps y gestos de la placa.
 
 ## Imágenes
 
@@ -20,6 +20,7 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Ruta de prueba** («Probar ruta en el navegador») — una ruta inventada para ver el sistema sin salir; la placa no la guarda como último viaje.
 - **Velocidad y límite** — velocidad GPS y límite de la vía (OpenStreetMap; 50 km/h en calles residenciales sin dato), con aviso rojo al excederlo.
 - **Navegación de Google Maps** — reenvía las indicaciones y la flecha de Maps, con velocidad y límite.
+- **Navegación de CoMaps** (2.3) — con «Seguir la navegación de CoMaps» activado, al iniciar una navegación en [CoMaps](https://comaps.app) la placa la muestra como el modo ruta: el camino que calculó CoMaps con las calles alrededor, flecha, distancia e indicación del próximo giro, velocidad y límite. Lo lee del [proveedor de navegación](https://codeberg.org/comaps/comaps/wiki/Content-Provider) que CoMaps publica para otras apps (con su permiso); toma los recálculos de CoMaps, la voz la da CoMaps y se cierra al detenerla en CoMaps.
 - **Notificaciones, llamadas y contactos** — WhatsApp, SMS, etc.; contestar/rechazar y llamar desde la placa.
 - **Música, clima (Open-Meteo) y hora**; el clima incluye probabilidad de lluvia por hora y atardecer para las esferas de la placa.
 - **Batería del teléfono** en el panel de control de la placa.
@@ -46,7 +47,8 @@ El APK queda en `app/build/outputs/apk/debug/`. La versión release (`assembleRe
 | Permiso | Para qué |
 |---|---|
 | Bluetooth (buscar/conectar) | Hablar con la placa. |
-| Acceso a notificaciones | Reenviar notificaciones y leer la navegación de Google Maps. |
+| Acceso a notificaciones | Reenviar notificaciones, leer la navegación de Google Maps y saber cuándo navega CoMaps. |
+| Datos de navegación de CoMaps (opcional) | Leer la ruta y el próximo giro de CoMaps (permiso que define CoMaps). |
 | Ubicación precisa | Seguir la ruta, velocidad, clima. |
 | Teléfono y contactos (opcional) | Mostrar y contestar llamadas, llamar desde la placa. |
 | Servicio en primer plano | Mantener la conexión y el GPS con la pantalla apagada. |

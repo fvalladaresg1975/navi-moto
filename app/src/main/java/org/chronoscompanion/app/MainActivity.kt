@@ -19,6 +19,8 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.switchmaterial.SwitchMaterial
 import org.chronoscompanion.app.ble.ChronosBleService
+import org.chronoscompanion.app.route.CoMapsLink
+import org.chronoscompanion.app.route.CoMapsPrefs
 import org.chronoscompanion.app.route.StreetTiles
 import org.chronoscompanion.app.telephony.CallAlertsPrefs
 import org.chronoscompanion.app.widget.NaviWidget
@@ -61,6 +63,54 @@ class MainActivity : AppCompatActivity() {
         if (!allGranted) {
             Toast.makeText(this, R.string.call_alerts_permissions_missing, Toast.LENGTH_LONG).show()
         }
+    }
+
+    // --- CoMaps mode: needs CoMaps' own runtime permission ------------------------------
+    private lateinit var coMapsSwitch: SwitchMaterial
+    private lateinit var coMapsInfoText: TextView
+    /** Set while the switch is changed from code, so its listener doesn't act on it. */
+    private var coMapsSwitchSync = false
+
+    private val coMapsPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        CoMapsPrefs.setEnabled(this, granted)
+        if (!granted) Toast.makeText(this, R.string.comaps_permission_denied, Toast.LENGTH_LONG).show()
+        showCoMaps()
+        ChronosBleService.instance?.refreshCoMaps()
+    }
+
+    private fun onCoMapsSwitch(on: Boolean) {
+        if (!on) {
+            CoMapsPrefs.setEnabled(this, false)
+            showCoMaps()
+            ChronosBleService.instance?.refreshCoMaps()
+            return
+        }
+        val pkg = CoMapsLink.installedPackage(this)
+        when {
+            pkg == null -> {
+                Toast.makeText(this, R.string.comaps_not_installed, Toast.LENGTH_LONG).show()
+                showCoMaps()
+            }
+            CoMapsLink.hasPermission(this, pkg) -> {
+                CoMapsPrefs.setEnabled(this, true)
+                showCoMaps()
+                ChronosBleService.instance?.refreshCoMaps()
+            }
+            // "On" is only saved once the rider actually grants it.
+            else -> coMapsPermissionLauncher.launch(CoMapsLink.permissionOf(pkg))
+        }
+    }
+
+    /** Switch and hint from what is true now: on = wanted, installed and permitted. */
+    private fun showCoMaps() {
+        val pkg = CoMapsLink.installedPackage(this)
+        val on = CoMapsPrefs.isEnabled(this) && pkg != null && CoMapsLink.hasPermission(this, pkg)
+        coMapsSwitchSync = true
+        coMapsSwitch.isChecked = on
+        coMapsSwitchSync = false
+        coMapsInfoText.setText(if (on) R.string.comaps_info_on else R.string.comaps_info_off)
     }
 
     private val statusReceiver = object : BroadcastReceiver() {
@@ -143,6 +193,12 @@ class MainActivity : AppCompatActivity() {
                 NaviWidget.update(this@MainActivity)
             }
         }
+        coMapsInfoText = findViewById(R.id.coMapsInfoText)
+        coMapsSwitch = findViewById<SwitchMaterial>(R.id.coMapsSwitch).apply {
+            setOnCheckedChangeListener { _, on -> if (!coMapsSwitchSync) onCoMapsSwitch(on) }
+        }
+        showCoMaps()
+
         streetCacheText = findViewById(R.id.streetCacheText)
         findViewById<MaterialButton>(R.id.streetClearButton).setOnClickListener { askClearStreets() }
 
@@ -234,6 +290,9 @@ class MainActivity : AppCompatActivity() {
         // The widget can flip these while the app is in the background.
         turnBeepSwitch.isChecked = org.chronoscompanion.app.route.TurnBeepPrefs.isEnabled(this)
         streetMapSwitch.isChecked = org.chronoscompanion.app.route.StreetMapPrefs.isEnabled(this)
+        // The CoMaps permission can be revoked in Android's settings meanwhile.
+        showCoMaps()
+        ChronosBleService.instance?.refreshCoMaps()
         NaviWidget.update(this)
         // The service keeps running (and stays connected) across the activity being
         // closed and reopened - it only reacts to NEW state-change broadcasts, so

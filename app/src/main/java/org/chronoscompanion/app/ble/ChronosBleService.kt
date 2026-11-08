@@ -52,6 +52,8 @@ import org.chronoscompanion.app.telephony.CallerLookup
 import org.chronoscompanion.app.telephony.WatchContactsPrefs
 import org.chronoscompanion.app.weather.WeatherFetcher
 import org.chronoscompanion.app.route.RouteDemo
+import org.chronoscompanion.app.route.CoMapsLink
+import org.chronoscompanion.app.route.CoMapsPrefs
 import org.chronoscompanion.app.route.Route
 import org.chronoscompanion.app.route.RouteFormat
 import org.chronoscompanion.app.route.RouteIcons
@@ -253,6 +255,7 @@ class ChronosBleService : Service() {
         registerCallStateReceiver()
         // Sticky broadcast: the current level arrives at once, then on every change.
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        refreshCoMaps()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -290,6 +293,8 @@ class ChronosBleService : Service() {
         stopCrashSpeed()
         stopRouteDemo()
         stopRoute()
+        coMapsLink?.release()
+        coMapsLink = null
         stopTimeSyncTimer()
         stopWeatherTimer()
         stopMusicStateTimer()
@@ -1080,6 +1085,8 @@ class ChronosBleService : Service() {
         // The watch's "Salir" ends whichever navigation is driving it: our own route (or
         // the demo) if one is active, otherwise Google Maps.
         if (isRouteActive || isRouteDemoRunning) {
+            // CoMaps can't be told to stop from outside: the watch closes, CoMaps goes on.
+            if (isCoMapsRoute) toast(R.string.comaps_nav_continues)
             stopRoute()
             stopRouteDemo()
             return
@@ -1831,7 +1838,13 @@ class ChronosBleService : Service() {
             lastDeadReckonMs = now
             lastSpeedMps = if (location.hasSpeed()) location.speed.toDouble() else 0.0
             routeSpeedKmh = if (location.hasSpeed()) (location.speed * 3.6f).toInt() else null
-            if (t.onRoute && !t.wrongWay) {
+            if (r.engine == CoMapsLink.ENGINE) {
+                // CoMaps speaks, beeps per its own turns (onCoMapsUpdate) and reroutes by
+                // itself; here only the posted limit, from the rider's own track.
+                mapsFixes.addLast(location)
+                while (mapsFixes.size > 10 || (location.time - mapsFixes.first.time) > 60000) mapsFixes.removeFirst()
+                maybeLookupMapsLimit(location)
+            } else if (t.onRoute && !t.wrongWay) {
                 offRouteSinceMs = 0L
                 rerouteProblemSaid = false
                 voice?.onProgress(r, routeS, lastSpeedMps)
@@ -1874,8 +1887,11 @@ class ChronosBleService : Service() {
         routeS = t.s
         routeSpeedKmh = null
         // Keep announcing on the estimate: an exit right after a tunnel still gets its call.
-        voice?.onProgress(r, routeS, lastSpeedMps)
-        beepForRoute(r, routeS, DEAD_RECKON_FACTOR * lastSpeedMps)
+        // (CoMaps keeps its own estimate and voice in a tunnel.)
+        if (r.engine != CoMapsLink.ENGINE) {
+            voice?.onProgress(r, routeS, lastSpeedMps)
+            beepForRoute(r, routeS, DEAD_RECKON_FACTOR * lastSpeedMps)
+        }
         if (status == Status.CONNECTED) {
             sendRouteState(r, routeS)
             lastRouteSendMs = now
@@ -2068,8 +2084,144 @@ class ChronosBleService : Service() {
                 .onFailure { Log.w(TAG, "Maps limit lookup failed", it) }.getOrNull()
             mainHandler.post {
                 mapsLimitInFlight = false
-                if (mapsSpeedActive) mapsLimitKmh = limit
+                if (mapsSpeedActive || isCoMapsRoute) mapsLimitKmh = limit
             }
+        }
+    }
+
+    // --- CoMaps mode: CoMaps' own navigation shown as route mode -------------------------
+    // CoMaps publishes its route and next turn for other apps (CoMapsLink). Its route
+    // becomes a Route, so the watch gets the same drawn road, streets, speed and limit as
+    // a route of our own; the next turn and the distances are CoMaps' live figures.
+    private var coMapsLink: CoMapsLink? = null
+    /** CoMaps' last live reading while it guides; null otherwise. */
+    private var coMapsLive: CoMapsLink.Live? = null
+    /** Revision of the CoMaps route on the watch; -1 = none. */
+    private var coMapsRevision = -1
+    /** Destination (Live.destKey) of a CoMaps navigation the rider ended here: that one is
+     * not taken over again, while a new destination or a new start in CoMaps is. */
+    private var coMapsDismissedDest: String? = null
+    /** Since when CoMaps has not been guiding (0 = it is). It passes through other states
+     * for a moment while rebuilding a route, so the end is only believed after a while. */
+    private var coMapsIdleSinceMs = 0L
+
+    val isCoMapsRoute: Boolean get() = activeRoute?.engine == CoMapsLink.ENGINE
+
+    /** Starts or stops following CoMaps per the app switch and CoMaps' permission. Called
+     * at start, from the switch, and on resume (the permission can be revoked meanwhile). */
+    fun refreshCoMaps() {
+        val want = CoMapsPrefs.isEnabled(this)
+        val link = coMapsLink
+            ?: if (want) CoMapsLink(this, ::coMapsNavigationShown, ::onCoMapsUpdate).also { coMapsLink = it } else null
+        if (link == null) return
+        if (!want || !link.start()) {
+            link.stop()
+            if (isCoMapsRoute) { coMapsLive = null; stopRoute() }
+            coMapsLive = null
+            coMapsRevision = -1
+            return
+        }
+        // Already navigating when the app (re)starts: CoMaps shows its notification.
+        if (coMapsNavigationShown() == true) link.poke()
+    }
+
+    /** CoMaps' navigation notification (category "navigation", from its NavigationService,
+     * verified with dumpsys) is up = CoMaps navigates. Null without the listener. Any thread. */
+    private fun coMapsNavigationShown(): Boolean? {
+        val listener = ChronosNotificationListener.instance ?: return null
+        return runCatching {
+            listener.activeNotifications?.any {
+                CoMapsLink.isCoMaps(it.packageName) && it.notification.category == Notification.CATEGORY_NAVIGATION
+            }
+        }.getOrNull()
+    }
+
+    /** From the notification listener: CoMaps posted or removed a notification.
+     * [navigationEnded] = its navigation notification went away, i.e. the rider stopped
+     * navigating in CoMaps: the watch closes at once, and whatever was ended on the
+     * watch no longer applies. */
+    fun onCoMapsNotification(navigationEnded: Boolean = false) {
+        if (navigationEnded) {
+            coMapsDismissedDest = null
+            coMapsLive = null
+            coMapsRevision = -1
+            if (isCoMapsRoute) {
+                Log.i(TAG, "CoMaps: navigation stopped in CoMaps")
+                stopRoute()
+            }
+        }
+        coMapsLink?.poke()
+    }
+
+    private fun onCoMapsUpdate(u: CoMapsLink.Update) {
+        // A route of our own or the demo has the watch: CoMaps waits.
+        if (isRouteDemoRunning || (activeRoute != null && !isCoMapsRoute)) return
+        // Read again here: a reading taken just before CoMaps' notification went away
+        // must not reopen what onCoMapsNotification has just closed.
+        val live = u.live?.takeIf { coMapsNavigationShown() != false }
+        val now = SystemClock.elapsedRealtime()
+        if (live == null || !(live.guiding || live.finished)) {
+            if (coMapsIdleSinceMs == 0L) coMapsIdleSinceMs = now
+            if (now - coMapsIdleSinceMs < 6000) return
+            // CoMaps really stopped guiding.
+            coMapsLive = null
+            coMapsRevision = -1
+            coMapsDismissedDest = null
+            if (isCoMapsRoute) {
+                Log.i(TAG, "CoMaps: navigation ended")
+                stopRoute()
+            }
+            return
+        }
+        coMapsIdleSinceMs = 0L
+        coMapsLive = live
+        val dismissed = coMapsDismissedDest
+        if (dismissed != null) {
+            if (live.destKey == dismissed) return
+            Log.i(TAG, "CoMaps: new destination, following again")
+            coMapsDismissedDest = null
+            coMapsRevision = -1
+        }
+        if (live.finished) {
+            if (isCoMapsRoute && arrivedAtMs == 0L) arrivedAtMs = now // shown 15 s, then closed
+            return
+        }
+        val pts = u.route
+        if (pts != null && pts.revision == live.revision && pts.revision != coMapsRevision) {
+            val route = CoMapsLink.toRoute(pts, live) ?: return
+            coMapsRevision = pts.revision
+            if (isCoMapsRoute) swapCoMapsRoute(route) else {
+                // Joining a navigation already under way: CoMaps' completion says roughly
+                // where along its route the rider is, until the first fix places them.
+                val startS = (live.completionPercent / 100.0).coerceIn(0.0, 1.0) * route.road.lengthM
+                Log.i(TAG, "CoMaps: following, %.1f km, %.0f%% done".format(
+                    java.util.Locale.US, route.road.lengthM / 1000, live.completionPercent))
+                startRoute(route, startS = startS)
+            }
+        }
+        if (!isCoMapsRoute) return
+        // Beep at the moment to turn, from CoMaps' own distance to its turn.
+        val glyph = CoMapsLink.glyphOf(live.direction)
+        val arrival = glyph == RouteIcons.Glyph.ARRIVE
+        val dist = live.distToTurnM
+        val key = if (dist != null && (arrival || glyph != RouteIcons.Glyph.STRAIGHT))
+            "c${live.revision}:${live.direction}:${live.exitNum}:${live.nextStreet}" else null
+        val speed = if (now - lastFixAtMs < 3000) lastSpeedMps else null
+        turnBeeper.update(key, dist ?: 0.0, speed, arrival, TurnBeepPrefs.isEnabled(this))
+    }
+
+    /** CoMaps rebuilt its route (the rider left it): the new one starts where they are. */
+    private fun swapCoMapsRoute(route: Route) {
+        Log.i(TAG, "CoMaps: new route, %.1f km".format(java.util.Locale.US, route.road.lengthM / 1000))
+        tracker?.close()
+        tracker = RouteTracker(route, this, appendTrace = true)
+        activeRoute = route
+        routeS = 0.0
+        arrivedAtMs = 0L
+        turnBeeper.reset()
+        if (status == Status.CONNECTED) {
+            sendRouteState(route, routeS)
+            lastRouteSendMs = SystemClock.elapsedRealtime()
         }
     }
 
@@ -2111,25 +2263,29 @@ class ChronosBleService : Service() {
 
     private fun sendRouteState(r: Route, s: Double) {
         val next = r.nextManeuver(s)
-        val glyph = next?.glyph ?: RouteIcons.Glyph.ARRIVE
+        // A CoMaps route has no maneuvers of its own: the next turn, distances and time are
+        // CoMaps' live figures (refreshed each second), the road and position are ours.
+        val live = coMapsLive.takeIf { r.engine == CoMapsLink.ENGINE }
+        val glyph = live?.let { CoMapsLink.glyphOf(it.direction) } ?: next?.glyph ?: RouteIcons.Glyph.ARRIVE
         val bits = RouteIcons.bits(glyph)
         val crc = ChronosProtocol.crc32Of(bits)
-        val remainingS = r.remainingDurationS(s)
+        val remainingS = live?.totalTimeS?.toDouble() ?: r.remainingDurationS(s)
+        val left = live?.distToTargetM ?: r.remainingDistanceM(s)
+        val toTurn = live?.let { it.distToTurnM ?: left } ?: ((next?.atM ?: r.road.lengthM) - s)
         // Same shapes Google Maps sends ("850 m", "1 h 20 min", "121,8 km", "Llegada:
         // 20:36"), so the watch's ring, trip tracker and info line parse route mode exactly
         // like Maps. Data before icon - see handleMapsNotification for why order matters.
         sendNavigationData(
-            title = RouteFormat.distance((next?.atM ?: r.road.lengthM) - s),
+            title = RouteFormat.distance(toTurn),
             duration = RouteFormat.duration(remainingS),
-            distance = RouteFormat.distance(r.remainingDistanceM(s)),
+            distance = RouteFormat.distance(left),
             eta = "Llegada: " + RouteFormat.clock(System.currentTimeMillis() + (remainingS * 1000).toLong()),
-            directions = next?.text ?: "Llegada a destino",
+            directions = live?.let { CoMapsLink.instruction(it) } ?: next?.text ?: "Llegada a destino",
             speed = "",
             hasIcon = true,
             iconCrc = crc
         )
         sendNavigationIcon(bits, crc)
-        val left = r.remainingDistanceM(s)
         if (abs(left - widgetRemainingM) >= 500) {
             widgetRemainingM = left
             org.chronoscompanion.app.widget.NaviWidget.update(this)
@@ -2137,7 +2293,8 @@ class ChronosBleService : Service() {
         updateRouteScale()
         // Same zoom for the route line and, through the pose, for the streets.
         val pose = riderPose(r, s)
-        sendRouteFrame(r.road.frameAt(s, routeScale), routeSpeedKmh, r.speedLimitAt(s), pose)
+        val limit = r.speedLimitAt(s) ?: if (r.engine == CoMapsLink.ENGINE) mapsLimitKmh else null
+        sendRouteFrame(r.road.frameAt(s, routeScale), routeSpeedKmh, limit, pose)
         if (pose != null) {
             maybeFetchStreets(r, s)
             sendStreetsNear(pose.xDm / 10.0, pose.yDm / 10.0)
@@ -2145,10 +2302,13 @@ class ChronosBleService : Service() {
     }
 
     fun startRoute(route: Route, destination: org.chronoscompanion.app.route.Destination? = null,
-                   prefs: org.chronoscompanion.app.route.RoutePrefs? = null) {
+                   prefs: org.chronoscompanion.app.route.RoutePrefs? = null, startS: Double = 0.0) {
+        val fromCoMaps = route.engine == CoMapsLink.ENGINE
         stopMapsSpeed(sendHide = false) // the route frames carry speed/limit from here on
         stopRouteDemo()
         stopRoute()
+        mapsFixes.clear()
+        mapsLimitKmh = null
         routeDest = destination
         if (prefs != null) routePrefs = prefs
         offRouteSinceMs = 0L
@@ -2157,11 +2317,11 @@ class ChronosBleService : Service() {
         lastFixAtMs = 0L
         lastSpeedMps = 0.0
         activeRoute = route
-        routeS = 0.0
+        routeS = startS
         routeSpeedKmh = null
         arrivedAtMs = 0L
         lastRouteSendMs = 0L
-        tracker = RouteTracker(route, this)
+        tracker = RouteTracker(route, this, startS = startS)
         streetsRoute = null
         streetsCoveredUntil = 0.0
         streetsFetching = false
@@ -2185,8 +2345,15 @@ class ChronosBleService : Service() {
                 }
             }
         }
-        voice = RouteVoice(this).also { it.announceStart(route) }
-        setForegroundTypes(withLocation = true)
+        if (fromCoMaps) {
+            // CoMaps gives the spoken directions. It starts with this app in the background,
+            // where the service can't be re-promoted - it already holds the location type
+            // from "Conectar" (see startForeground), as Google Maps mode relies on too.
+            voice = null
+        } else {
+            voice = RouteVoice(this).also { it.announceStart(route) }
+            setForegroundTypes(withLocation = true)
+        }
         startRouteTracking()
         mainHandler.post(routeRunnable)
         widgetRemainingM = route.distanceM
@@ -2194,8 +2361,17 @@ class ChronosBleService : Service() {
     }
 
     fun stopRoute() {
-        if (activeRoute == null) return
+        val r = activeRoute ?: return
+        val fromCoMaps = r.engine == CoMapsLink.ENGINE
+        // Ended here (watch "Salir", app, widget, arrival) while CoMaps still guides: don't
+        // take that same navigation over again; the next one CoMaps starts is taken.
+        coMapsLive?.takeIf { fromCoMaps && it.guiding }?.let {
+            coMapsDismissedDest = it.destKey
+            Log.i(TAG, "CoMaps: ended on this side, CoMaps still navigating")
+        }
         activeRoute = null
+        mapsFixes.clear()
+        mapsLimitKmh = null
         rerouteGen++ // any in-flight reroute answer is now stale
         rerouting = false
         turnBeeper.reset()
@@ -2210,8 +2386,9 @@ class ChronosBleService : Service() {
         sentStreetIds.clear()
         sentStreetPts = 0
         streetsNeedClear = true
-        // Keep the location type: the Google Maps speedometer may need it next.
-        setForegroundTypes(withLocation = hasFineLocation())
+        // Keep the location type: the Google Maps speedometer may need it next. (A CoMaps
+        // route never changed the types, and may end with this app in the background.)
+        if (!fromCoMaps) setForegroundTypes(withLocation = hasFineLocation())
         sendRouteClear()
         sendNavigationStop()
         org.chronoscompanion.app.widget.NaviWidget.update(this)

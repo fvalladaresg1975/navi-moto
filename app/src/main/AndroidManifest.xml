@@ -43,6 +43,12 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
 
+    <!-- CoMaps mode: read CoMaps' own navigation (next turn, route) from the provider it
+         publishes for other apps. A runtime permission CoMaps defines, one per build. -->
+    <uses-permission android:name="app.comaps.google.permission.READ_NAVIGATION_DATA" />
+    <uses-permission android:name="app.comaps.fdroid.permission.READ_NAVIGATION_DATA" />
+    <uses-permission android:name="app.comaps.permission.READ_NAVIGATION_DATA" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
@@ -57,6 +63,10 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- CoMaps mode: its navigation provider. -->
+        <package android:name="app.comaps.google" />
+        <package android:name="app.comaps.fdroid" />
+        <package android:name="app.comaps" />
     </queries>
 
     <application

@@ -9,6 +9,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import org.chronoscompanion.app.ble.ChronosBleService
 import org.chronoscompanion.app.ble.ChronosProtocol
+import org.chronoscompanion.app.route.CoMapsLink
 
 /**
  * Listens for ALL notifications (Android's API doesn't let a listener subscribe to a
@@ -119,6 +120,12 @@ class ChronosNotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return // never forward our own foreground-service notification
+        if (CoMapsLink.isCoMaps(sbn.packageName)) {
+            // CoMaps' navigation is read from its own data, not its notification; the
+            // notification only says "look now". Never forwarded as a message.
+            ChronosBleService.instance?.onCoMapsNotification()
+            return
+        }
         if (sbn.packageName == MAPS_PACKAGE) {
             // While route mode drives the watch, Maps must not: two sources would overwrite
             // each other's turn, distance and icon every second.
@@ -136,6 +143,13 @@ class ChronosNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (CoMapsLink.isCoMaps(sbn.packageName)) {
+            // Its navigation notification (category "navigation", verified with dumpsys)
+            // going away = the rider stopped navigating in CoMaps.
+            ChronosBleService.instance?.onCoMapsNotification(
+                navigationEnded = sbn.notification.category == Notification.CATEGORY_NAVIGATION)
+            return
+        }
         if (sbn.packageName != MAPS_PACKAGE) return
         // Closing Maps while route mode runs must not send "navigation stopped" over it.
         if (ChronosBleService.instance?.isRouteActive == true) return
