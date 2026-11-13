@@ -184,7 +184,9 @@ Estos interruptores están en la pantalla principal de la app: los de navegació
 
 <img src="docs/images/app-llamadas.png" alt="Interruptor Mostrar llamadas entrantes en el navegador" width="400">
 
-Cuando entra una llamada, la placa muestra quién llama (con su nombre si está en tus contactos) y puedes contestarla o rechazarla desde la placa. Al activarlo, Android pide los permisos de teléfono, registro de llamadas y contactos; si no los das todos, el interruptor se vuelve a apagar.
+<img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/llamada-entrante.png" alt="Llamada entrante en la placa" width="220">
+
+Cuando entra una llamada, la placa muestra **Llamada entrante** y quién llama (con su nombre si está en tus contactos). Toca el botón **verde** para contestar o el **rojo** para rechazarla; la conversación sigue por el celular o por el intercomunicador del casco. Al activarlo, Android pide los permisos de teléfono, registro de llamadas y contactos; si no los das todos, el interruptor se vuelve a apagar.
 
 Con **Elegir contactos del navegador** escoges hasta 20 contactos que aparecen en la placa: si tocas uno, el celular lo llama.
 
