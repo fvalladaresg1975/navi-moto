@@ -19,9 +19,9 @@ La placa sola no navega: siempre necesita la app conectada.
 1. Enciende la placa con el botón **PWR**.
 2. Abre la app y toca **1. Habilitar acceso a notificaciones**. Activa *Navi Moto* en la lista y vuelve a la app. Sin este paso no funcionan las notificaciones ni los modos Google Maps y CoMaps.
 3. Toca **2. Conectar con el navegador** y acepta los permisos que pida (Bluetooth, ubicación y, si quieres, llamadas y contactos).
-4. Cuando arriba diga **Estado del navegador: Conectado**, ya está. Desde ahí la app se reconecta sola.
+4. Cuando la cabecera de colores diga **Conectado** (con el punto verde), ya está. Desde ahí la app se reconecta sola.
 
-Si tienes más de una placa, usa **Cambiar de navegador** al final de la pantalla de la app.
+Debajo de los botones 1 y 2, las opciones están agrupadas por sección, cada una con su color: **Navegación**, **Llamadas y avisos**, **Seguridad**, **La placa**, **Apariencia** y **Conexión**. Si tienes más de una placa, usa **Cambiar de navegador** en la sección Conexión.
 
 <img src="docs/images/app-principal.png" alt="Pantalla principal de la app, conectada" width="260">
 
@@ -178,7 +178,7 @@ El clima de tu ubicación: ícono, temperatura y la hora en que la app lo actual
 
 ## 8. Ajustes de la app
 
-En la pantalla principal de la app, más abajo, están estos interruptores. Quedan guardados: basta con activarlos una vez.
+Estos interruptores están en la pantalla principal de la app: los de navegación en la sección **Navegación** y el de llamadas en **Llamadas y avisos**. Quedan guardados: basta con activarlos una vez.
 
 ### Mostrar llamadas entrantes en el navegador
 
@@ -207,6 +207,12 @@ Un pitido corto en el momento de girar, unos 2 segundos antes de la esquina, des
 Dibuja tenues las calles de la zona bajo el camino, en el modo ruta y en el modo CoMaps. Se descargan de OpenStreetMap al empezar la ruta y quedan guardadas en el celular, así que otra ruta por la misma zona las usa sin internet. Sobre 50 MB se borran solas las que llevan más tiempo sin usarse; **Borrar calles guardadas** las borra todas. Apagado, la placa muestra solo el camino.
 
 El **pitido** y las **calles** también se cambian desde el widget de Navi Moto en la pantalla de inicio de Android.
+
+### Tema de la app
+
+<img src="docs/images/app-tema.png" alt="Tema de la app, en la sección Apariencia" width="400">
+
+En la sección **Apariencia**, **Tema de la app** elige entre **Igual que el teléfono** (lo normal), **Claro** u **Oscuro**. El oscuro usa fondo negro puro: en teléfonos con pantalla OLED o AMOLED esos píxeles quedan apagados y gasta menos batería; en pantallas LCD el ahorro es casi nulo. La placa no cambia, siempre usa fondo negro.
 
 ## 9. Otras funciones
 

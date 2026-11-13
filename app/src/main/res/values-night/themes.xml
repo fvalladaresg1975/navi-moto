@@ -4,6 +4,7 @@
         <item name="colorPrimary">@color/chronos_primary</item>
         <item name="colorPrimaryDark">@color/chronos_bg_dark</item>
         <item name="colorAccent">@color/chronos_primary</item>
+        <item name="colorOnPrimary">@color/chronos_on_primary</item>
         <item name="android:windowBackground">@color/chronos_bg_dark</item>
         <item name="android:statusBarColor">@color/chronos_bg_dark</item>
         <item name="android:windowLightStatusBar">false</item>

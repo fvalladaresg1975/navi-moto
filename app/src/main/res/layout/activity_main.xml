@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Main screen: a coloured header with the connection state, the two first-time buttons,
+     then the options grouped by section - each section with its own colour (title and
+     icon chips). Row building blocks are in values/styles.xml. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -9,284 +12,238 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="28dp">
 
+        <!-- Header -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingTop="16dp"
-            android:paddingBottom="24dp">
-
-            <ImageView
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:background="@drawable/logo_badge_bg"
-                android:padding="10dp"
-                android:src="@drawable/ic_nav_logo"
-                android:contentDescription="@string/app_name" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="@string/app_name"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:textColor="?android:attr/textColorPrimary" />
-        </LinearLayout>
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="2dp"
-            app:strokeWidth="0dp">
+            android:background="@drawable/header_gradient"
+            android:elevation="4dp"
+            android:orientation="vertical"
+            android:padding="22dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:padding="18dp">
+                android:orientation="horizontal">
 
-                <View
-                    android:id="@+id/statusDot"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
-                    android:background="@drawable/status_dot" />
+                <ImageView
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="@drawable/header_pill"
+                    android:contentDescription="@string/app_name"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_nav_logo" />
 
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_marginStart="14dp"
+                    android:layout_weight="1"
                     android:orientation="vertical">
 
                     <TextView
-                        android:id="@+id/statusText"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/status_not_started"
-                        android:textSize="16sp"
-                        android:textColor="?android:attr/textColorPrimary" />
+                        android:text="@string/app_name"
+                        android:textColor="#FFFFFFFF"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/deviceNameText"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text=""
-                        android:textSize="13sp"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:visibility="gone" />
+                        android:text="@string/header_tagline"
+                        android:textColor="#D9FFFFFF"
+                        android:textSize="13sp" />
                 </LinearLayout>
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/header_pill"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="7dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="7dp">
+
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="@drawable/status_dot" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="9dp"
+                    android:text="@string/status_not_started"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/deviceNameText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="8dp"
+                android:textColor="#D9FFFFFF"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- First time: buttons 1 and 2 (the manual refers to them by number) -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/notifAccessButton"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton.Icon"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="20dp"
             android:text="@string/button_enable_notifications"
+            app:cornerRadius="16dp"
             app:icon="@drawable/ic_notification_bell"
             app:iconGravity="textStart"
-            app:cornerRadius="14dp" />
+            app:strokeColor="@color/chronos_primary" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/connectButton"
             style="@style/Widget.MaterialComponents.Button.Icon"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:text="@string/button_connect"
+            app:cornerRadius="16dp"
             app:icon="@drawable/ic_bluetooth_link"
-            app:iconGravity="textStart"
-            app:cornerRadius="14dp" />
+            app:iconGravity="textStart" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/notificationAppsButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/button_notification_apps" />
+        <!-- ===== Navigation ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_navigation"
+            android:textColor="@color/cat_navigation" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/watchContactsButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/button_watch_contacts" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/photoFaceButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/button_photo_face" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/crashButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/button_crash" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/firmwareButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/button_firmware_update" />
-
-        <!-- Route mode, phase 1: drives a made-up road on the watch to judge the view. -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/routeDemoButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/button_route_demo" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/label_call_alerts"
-                    android:textSize="14sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <!-- SwitchMaterial (Material 2), not MaterialSwitch (Material 3): this
-                     app's theme is Theme.MaterialComponents.*, and mixing in the M3
-                     widget left SwitchCompat's on/off text attributes null, crashing
-                     with an NPE inside makeLayout() as soon as the screen was measured. -->
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/callAlertsSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- CoMaps mode: CoMaps' own navigation shown on the watch as route mode. -->
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
+                android:orientation="vertical">
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:id="@+id/routeDemoButton"
+                    style="@style/NaviRow.Action">
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/label_comaps"
-                        android:textSize="14sp"
-                        android:textColor="?android:attr/textColorPrimary" />
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_navigation"
+                        android:src="@drawable/ic_row_route" />
 
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            android:id="@+id/routeDemoTitle"
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_route_demo" />
+
+                        <TextView
+                            android:id="@+id/routeDemoSubtitle"
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_route_demo" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
+                <!-- CoMaps mode: CoMaps' own navigation shown on the watch as route mode. -->
+                <LinearLayout style="@style/NaviRow">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_navigation"
+                        android:src="@drawable/ic_row_map" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/label_comaps" />
+
+                        <TextView
+                            android:id="@+id/coMapsInfoText"
+                            style="@style/NaviRowSubtitle" />
+                    </LinearLayout>
+
+                    <!-- SwitchMaterial (Material 2), not MaterialSwitch (Material 3): this
+                         app's theme is Theme.MaterialComponents.*, and mixing in the M3
+                         widget left SwitchCompat's on/off text attributes null, crashing
+                         with an NPE inside makeLayout() as soon as the screen was measured. -->
                     <com.google.android.material.switchmaterial.SwitchMaterial
                         android:id="@+id/coMapsSwitch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/coMapsInfoText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textSize="12sp"
-                    android:textColor="?android:attr/textColorSecondary" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                <View style="@style/NaviRowDivider" />
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
+                <LinearLayout style="@style/NaviRow">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:padding="18dp">
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_navigation"
+                        android:src="@drawable/ic_widget_beep" />
 
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/label_turn_beep"
-                    android:textSize="14sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                    <LinearLayout style="@style/NaviRowText">
 
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/turnBeepSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/label_turn_beep" />
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_turn_beep" />
+                    </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/turnBeepSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    style="@style/NaviRow"
+                    android:paddingBottom="4dp">
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/label_street_map"
-                        android:textSize="14sp"
-                        android:textColor="?android:attr/textColorPrimary" />
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_navigation"
+                        android:src="@drawable/ic_widget_streets" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/label_street_map" />
+
+                        <TextView
+                            android:id="@+id/streetCacheText"
+                            style="@style/NaviRowSubtitle" />
+                    </LinearLayout>
 
                     <com.google.android.material.switchmaterial.SwitchMaterial
                         android:id="@+id/streetMapSwitch"
@@ -294,58 +251,310 @@
                         android:layout_height="wrap_content" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/streetCacheText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textSize="12sp"
-                    android:textColor="?android:attr/textColorSecondary" />
-
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/streetClearButton"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="end"
-                    android:textSize="13sp"
-                    android:text="@string/button_street_clear" />
+                    android:layout_marginEnd="8dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/button_street_clear"
+                    android:textColor="@color/cat_navigation"
+                    android:textSize="13sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="4dp">
+        <!-- ===== Calls and notifications ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_calls"
+            android:textColor="@color/cat_calls" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/changeDeviceButton"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textSize="13sp"
-                android:text="@string/button_change_device" />
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/forgetDeviceButton"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textSize="13sp"
-                android:textColor="@color/status_error"
-                android:text="@string/button_forget_device" />
-        </LinearLayout>
+                android:orientation="vertical">
+
+                <LinearLayout style="@style/NaviRow">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_calls"
+                        android:src="@drawable/ic_row_phone" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/label_call_alerts" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_call_alerts" />
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/callAlertsSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
+                <LinearLayout
+                    android:id="@+id/watchContactsButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_calls"
+                        android:src="@drawable/ic_row_person" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_watch_contacts" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_watch_contacts" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
+                <LinearLayout
+                    android:id="@+id/notificationAppsButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_calls"
+                        android:src="@drawable/ic_row_apps" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_notification_apps" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_notification_apps" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== Safety ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_safety"
+            android:textColor="@color/cat_safety" />
+
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
+
+            <LinearLayout
+                android:id="@+id/crashButton"
+                style="@style/NaviRow.Action">
+
+                <ImageView
+                    style="@style/NaviRowIcon"
+                    android:backgroundTint="@color/cat_safety"
+                    android:src="@drawable/ic_row_shield" />
+
+                <LinearLayout style="@style/NaviRowText">
+
+                    <TextView
+                        style="@style/NaviRowTitle"
+                        android:text="@string/button_crash" />
+
+                    <TextView
+                        style="@style/NaviRowSubtitle"
+                        android:text="@string/sub_crash" />
+                </LinearLayout>
+
+                <ImageView style="@style/NaviRowChevron" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== The board ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_board"
+            android:textColor="@color/cat_board" />
+
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/photoFaceButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_board"
+                        android:src="@drawable/ic_row_photo" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_photo_face" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_photo_face" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
+                <LinearLayout
+                    android:id="@+id/firmwareButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_board"
+                        android:src="@drawable/ic_row_update" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_firmware_update" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_firmware" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== Appearance ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_appearance"
+            android:textColor="@color/cat_appearance" />
+
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
+
+            <LinearLayout
+                android:id="@+id/themeButton"
+                style="@style/NaviRow.Action">
+
+                <ImageView
+                    style="@style/NaviRowIcon"
+                    android:backgroundTint="@color/cat_appearance"
+                    android:src="@drawable/ic_row_theme" />
+
+                <LinearLayout style="@style/NaviRowText">
+
+                    <TextView
+                        style="@style/NaviRowTitle"
+                        android:text="@string/theme_title" />
+
+                    <TextView
+                        android:id="@+id/themeSubtitle"
+                        style="@style/NaviRowSubtitle"
+                        android:text="@string/theme_system" />
+                </LinearLayout>
+
+                <ImageView style="@style/NaviRowChevron" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== Connection ===== -->
+        <TextView
+            style="@style/NaviSectionTitle"
+            android:text="@string/section_connection"
+            android:textColor="@color/cat_connection" />
+
+        <com.google.android.material.card.MaterialCardView style="@style/NaviSectionCard">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/changeDeviceButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_connection"
+                        android:src="@drawable/ic_row_swap" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_change_device" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_change_device" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
+                <LinearLayout
+                    android:id="@+id/forgetDeviceButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/status_error"
+                        android:src="@drawable/ic_row_delete" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/button_forget_device"
+                            android:textColor="@color/status_error" />
+
+                        <TextView
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/sub_forget_device" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/info_text"
-            android:textSize="13sp"
+            android:layout_marginStart="6dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="6dp"
             android:lineSpacingExtra="3dp"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:text="@string/info_text"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>

@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Navi Moto</string>
 
-    <string name="status_not_started">Estado del navegador: sin iniciar</string>
+    <string name="status_not_started">Sin iniciar</string>
     <string name="status_prefix">Estado del navegador: </string>
 
     <string name="button_enable_notifications">1. Habilitar acceso a notificaciones</string>
@@ -11,17 +11,17 @@
     <string name="button_forget_device">Olvidar este navegador</string>
 
     <string name="permissions_missing">Faltan permisos de Bluetooth para continuar</string>
-    <string name="status_starting">Estado del navegador: iniciando…</string>
+    <string name="status_starting">Iniciando…</string>
     <string name="discovery_searching">Buscando navegadores cercanos…</string>
     <string name="discovery_none_found">No se encontró ningún navegador Navi Moto cerca</string>
-    <string name="discovery_title">Elegí un navegador</string>
+    <string name="discovery_title">Elige un navegador</string>
     <string name="dialog_cancel">Cancelar</string>
 
-    <string name="info_text">Primero tocá el botón 1 y activá esta app en la lista de acceso a notificaciones. Después volvé y tocá el botón 2.\n\nUna vez conectado, el navegador recibe notificaciones (WhatsApp, SMS, etc.), navegación de Google Maps, clima y control de música — y podés detener la conexión en cualquier momento desde la notificación persistente.</string>
+    <string name="info_text">La primera vez, toca el botón 1 y activa Navi Moto en la lista de acceso a notificaciones. Luego vuelve y toca el botón 2.\n\nYa conectada, la placa recibe las notificaciones (WhatsApp, SMS, etc.), las llamadas, la navegación (modo ruta, Google Maps o CoMaps), el clima y el control de la música. Puedes detener la conexión cuando quieras desde la notificación fija de la app.</string>
 
     <string name="button_notification_apps">Elegir apps de notificaciones</string>
     <string name="notification_apps_title">Notificaciones</string>
-    <string name="notification_apps_description">Elegí de qué aplicaciones querés recibir notificaciones en el navegador.</string>
+    <string name="notification_apps_description">Elige de qué aplicaciones quieres recibir notificaciones en el navegador.</string>
     <string name="notification_apps_search_hint">Buscar</string>
 
     <string name="label_call_alerts">Mostrar llamadas entrantes en el navegador</string>
@@ -29,15 +29,15 @@
 
     <string name="button_watch_contacts">Elegir contactos del navegador</string>
     <string name="watch_contacts_title">Contactos</string>
-    <string name="watch_contacts_description">Elegí los contactos que querés tener en el navegador. Tocando uno en el navegador, el teléfono lo llama.</string>
-    <string name="watch_contacts_permission_missing">Activá primero “Mostrar llamadas entrantes en el navegador” para dar permiso a los contactos</string>
-    <string name="watch_contacts_limit">Podés elegir hasta %1$d contactos</string>
+    <string name="watch_contacts_description">Elige los contactos que quieres tener en el navegador. Si tocas uno en el navegador, el teléfono lo llama.</string>
+    <string name="watch_contacts_permission_missing">Activa primero “Mostrar llamadas entrantes en el navegador” para dar permiso a los contactos</string>
+    <string name="watch_contacts_limit">Puedes elegir hasta %1$d contactos</string>
 
-    <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
+    <string name="missing_call_permission">No se pudo llamar: falta el permiso para realizar llamadas. Apaga y vuelve a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
     <string name="share_destination_label">Ruta al navegador</string>
     <string name="button_route_demo">Probar ruta en el navegador</string>
     <string name="button_route_demo_stop">Detener prueba de ruta</string>
-    <string name="route_demo_not_connected">Conectá el navegador primero para probar la ruta.</string>
+    <string name="route_demo_not_connected">Conecta el navegador primero para probar la ruta.</string>
     <string name="label_turn_beep">Pitido antes de cada giro</string>
     <string name="label_comaps">Seguir la navegación de CoMaps</string>
     <string name="comaps_info_on">Inicia la navegación en CoMaps y la placa la muestra en modo ruta: el camino de CoMaps, las calles alrededor, tu velocidad y el límite. Las indicaciones con voz las da CoMaps.</string>
@@ -116,7 +116,7 @@
     <string name="photo_err_decode">El navegador no pudo leer la foto.</string>
     <string name="photo_err_memory">El navegador no tuvo espacio para guardar la foto.</string>
     <string name="photo_err_no_answer">El navegador no respondió. Revisa la conexión e inténtalo de nuevo.</string>
-    <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apagá y volvé a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
+    <string name="missing_answer_permission">No se pudo contestar/rechazar: falta el permiso de llamadas. Apaga y vuelve a encender “Mostrar llamadas entrantes en el navegador” para concederlo.</string>
 
     <!-- Firmware update over WiFi (ota/FirmwareUpdateActivity) -->
     <string name="button_firmware_update">Actualizar firmware del navegador</string>
@@ -182,4 +182,30 @@
         <item quantity="one">Aviso de caída enviado a %d contacto.</item>
         <item quantity="other">Aviso de caída enviado a %d contactos.</item>
     </plurals>
+
+    <!-- Main screen: header, sections and the one-line explanation under each option. -->
+    <string name="header_tagline">Navegador para moto</string>
+    <string name="header_board_name">Placa: %1$s</string>
+    <string name="section_navigation">Navegación</string>
+    <string name="section_calls">Llamadas y avisos</string>
+    <string name="section_safety">Seguridad</string>
+    <string name="section_board">La placa</string>
+    <string name="section_connection">Conexión</string>
+    <string name="section_appearance">Apariencia</string>
+    <string name="theme_title">Tema de la app</string>
+    <string name="theme_system">Igual que el teléfono</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="theme_dark_long">Oscuro (fondo negro: ahorra batería en pantallas OLED)</string>
+    <string name="sub_route_demo">Una ruta inventada para conocer las pantallas</string>
+    <string name="sub_route_stop">Termina la navegación que muestra la placa</string>
+    <string name="sub_turn_beep">En el celular o el intercomunicador, al momento de girar</string>
+    <string name="sub_call_alerts">Quién llama, y contestar o rechazar desde la placa</string>
+    <string name="sub_watch_contacts">Hasta 20 contactos para llamar desde la placa</string>
+    <string name="sub_notification_apps">Qué apps envían sus avisos a la placa</string>
+    <string name="sub_crash">SMS con tu ubicación a tus contactos de emergencia</string>
+    <string name="sub_photo_face">Una foto tuya de fondo en la esfera</string>
+    <string name="sub_firmware">Actualiza la placa por WiFi, sin cable</string>
+    <string name="sub_change_device">Elegir otra placa cercana</string>
+    <string name="sub_forget_device">Desvincular la placa guardada</string>
 </resources>

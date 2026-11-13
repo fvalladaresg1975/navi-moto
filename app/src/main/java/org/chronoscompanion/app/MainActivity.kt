@@ -39,7 +39,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceNameText: TextView
     private lateinit var statusDot: View
     private lateinit var callAlertsSwitch: SwitchMaterial
-    private lateinit var routeDemoButton: MaterialButton
+    private lateinit var routeDemoTitle: TextView
+    private lateinit var routeDemoSubtitle: TextView
 
     /** Permissions the incoming-call feature needs: read the ringing state and number,
      * resolve it against contacts, and answer/decline from the watch. */
@@ -145,29 +146,32 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.connectButton).setOnClickListener {
             requestPermissionsAndStart()
         }
-        findViewById<MaterialButton>(R.id.changeDeviceButton).setOnClickListener {
+        findViewById<View>(R.id.changeDeviceButton).setOnClickListener {
             changeDevice()
         }
-        findViewById<MaterialButton>(R.id.forgetDeviceButton).setOnClickListener {
+        findViewById<View>(R.id.forgetDeviceButton).setOnClickListener {
             confirmForgetDevice()
         }
-        findViewById<MaterialButton>(R.id.notificationAppsButton).setOnClickListener {
+        findViewById<View>(R.id.themeButton).setOnClickListener { chooseTheme() }
+        showTheme()
+        findViewById<View>(R.id.notificationAppsButton).setOnClickListener {
             startActivity(Intent(this, NotificationAppsActivity::class.java))
         }
-        findViewById<MaterialButton>(R.id.watchContactsButton).setOnClickListener {
+        findViewById<View>(R.id.watchContactsButton).setOnClickListener {
             startActivity(Intent(this, WatchContactsActivity::class.java))
         }
-        findViewById<MaterialButton>(R.id.photoFaceButton).setOnClickListener {
+        findViewById<View>(R.id.photoFaceButton).setOnClickListener {
             startActivity(Intent(this, org.chronoscompanion.app.photo.PhotoFaceActivity::class.java))
         }
-        findViewById<MaterialButton>(R.id.crashButton).setOnClickListener {
+        findViewById<View>(R.id.crashButton).setOnClickListener {
             startActivity(Intent(this, org.chronoscompanion.app.crash.CrashSettingsActivity::class.java))
         }
-        findViewById<MaterialButton>(R.id.firmwareButton).setOnClickListener {
+        findViewById<View>(R.id.firmwareButton).setOnClickListener {
             startActivity(Intent(this, org.chronoscompanion.app.ota.FirmwareUpdateActivity::class.java))
         }
-        routeDemoButton = findViewById(R.id.routeDemoButton)
-        routeDemoButton.setOnClickListener {
+        routeDemoTitle = findViewById(R.id.routeDemoTitle)
+        routeDemoSubtitle = findViewById(R.id.routeDemoSubtitle)
+        findViewById<View>(R.id.routeDemoButton).setOnClickListener {
             val service = ChronosBleService.instance ?: return@setOnClickListener
             when {
                 service.isRouteActive -> service.stopRoute()
@@ -248,13 +252,13 @@ class MainActivity : AppCompatActivity() {
      * because a route is usually started from the share screen, not from here. */
     private fun refreshRouteButton() {
         val service = ChronosBleService.instance
-        routeDemoButton.setText(
-            when {
-                service?.isRouteActive == true -> R.string.button_route_stop
-                service?.isRouteDemoRunning == true -> R.string.button_route_demo_stop
-                else -> R.string.button_route_demo
-            }
-        )
+        val (title, sub) = when {
+            service?.isRouteActive == true -> R.string.button_route_stop to R.string.sub_route_stop
+            service?.isRouteDemoRunning == true -> R.string.button_route_demo_stop to R.string.sub_route_stop
+            else -> R.string.button_route_demo to R.string.sub_route_demo
+        }
+        routeDemoTitle.setText(title)
+        routeDemoSubtitle.setText(sub)
     }
 
     // --- Street cache (filled by each route's download, see StreetPrefetch) ----------
@@ -307,7 +311,7 @@ class MainActivity : AppCompatActivity() {
         // together with "Cambiar de navegador" correctly refusing to work). Show a distinct
         // "stopped" state instead whenever there's no live service instance.
         if (ChronosBleService.instance == null) {
-            statusText.text = getString(R.string.status_prefix) + "Detenido"
+            statusText.text = "Detenido"
             (statusDot.background as GradientDrawable).setColor(ContextCompat.getColor(this, R.color.status_disconnected))
         } else {
             applyStatus(ChronosBleService.status)
@@ -334,20 +338,48 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyStatus(status: ChronosBleService.Status) {
         val (label, colorRes) = when (status) {
-            ChronosBleService.Status.DISCONNECTED -> getString(R.string.status_prefix) + "Buscando el navegador…" to R.color.status_disconnected
-            ChronosBleService.Status.SCANNING -> getString(R.string.status_prefix) + "Buscando el navegador…" to R.color.status_connecting
-            ChronosBleService.Status.CONNECTING -> getString(R.string.status_prefix) + "Conectando…" to R.color.status_connecting
-            ChronosBleService.Status.CONNECTED -> getString(R.string.status_prefix) + "Conectado" to R.color.status_connected
+            ChronosBleService.Status.DISCONNECTED -> "Buscando el navegador…" to R.color.status_disconnected
+            ChronosBleService.Status.SCANNING -> "Buscando el navegador…" to R.color.status_connecting
+            ChronosBleService.Status.CONNECTING -> "Conectando…" to R.color.status_connecting
+            ChronosBleService.Status.CONNECTED -> "Conectado" to R.color.status_connected
         }
         statusText.text = label
         (statusDot.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
+    }
+
+    private fun showTheme() {
+        findViewById<TextView>(R.id.themeSubtitle).setText(
+            when (ThemePrefs.get(this)) {
+                ThemePrefs.LIGHT -> R.string.theme_light
+                ThemePrefs.DARK -> R.string.theme_dark
+                else -> R.string.theme_system
+            }
+        )
+    }
+
+    /** Follow the phone, light or dark; AppCompat recreates the open screens on change. */
+    private fun chooseTheme() {
+        val options = arrayOf(
+            getString(R.string.theme_system),
+            getString(R.string.theme_light),
+            getString(R.string.theme_dark_long),
+        )
+        // AppCompat dialog so it follows the app theme, not only the phone's.
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.theme_title)
+            .setSingleChoiceItems(options, ThemePrefs.get(this)) { dialog, which ->
+                dialog.dismiss()
+                if (which != ThemePrefs.get(this)) ThemePrefs.set(this, which)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun applyDeviceName(name: String?) {
         if (name.isNullOrEmpty()) {
             deviceNameText.visibility = View.GONE
         } else {
-            deviceNameText.text = name
+            deviceNameText.text = getString(R.string.header_board_name, name)
             deviceNameText.visibility = View.VISIBLE
         }
     }
@@ -394,7 +426,7 @@ class MainActivity : AppCompatActivity() {
     private fun changeDevice() {
         val service = ChronosBleService.instance
         if (service == null) {
-            Toast.makeText(this, "Primero conectate una vez con el botón 2", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Primero conéctate una vez con el botón 2", Toast.LENGTH_SHORT).show()
             return
         }
         val progressBar = android.widget.ProgressBar(this).apply {

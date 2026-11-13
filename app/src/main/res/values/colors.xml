@@ -5,9 +5,9 @@
     <color name="chronos_on_primary">#FFFFFF</color>
 
     <color name="chronos_bg_light">#F5F7F8</color>
-    <color name="chronos_bg_dark">#12181A</color>
+    <color name="chronos_bg_dark">#000000</color>
     <color name="chronos_surface_light">#FFFFFF</color>
-    <color name="chronos_surface_dark">#1C2528</color>
+    <color name="chronos_surface_dark">#161D1F</color>
     <color name="chronos_text_light">#12181A</color>
     <color name="chronos_text_dark">#E8F1EF</color>
     <color name="chronos_text_muted_light">#5B6B6E</color>
@@ -19,4 +19,13 @@
     <color name="status_error">#E74C3C</color>
 
     <color name="ic_launcher_background">#00997F</color>
+
+    <!-- Main screen sections: one colour each (section title and icon chips). -->
+    <color name="cat_navigation">#2F80ED</color>
+    <color name="cat_calls">#8E5CF7</color>
+    <color name="cat_safety">#E5484D</color>
+    <color name="cat_board">#F2994A</color>
+    <color name="cat_connection">#00BFA5</color>
+    <color name="cat_appearance">#5E6AD2</color>
+    <color name="row_divider">#22808080</color>
 </resources>

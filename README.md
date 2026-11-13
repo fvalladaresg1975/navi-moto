@@ -27,6 +27,7 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido, calles y brillo de la pantalla de la placa.
 - **Esfera con foto** — eliges una foto, la ajustas en el círculo (arrastrar / pellizcar), eliges dónde va la hora y la envías a la esfera «Foto» de la placa, que la guarda.
 - **Actualizar firmware del navegador** — eliges el `firmware.bin` y la app se lo envía a la placa por la red WiFi propia de la placa (sin cable USB). Solo acepta firmwares que también se pueden actualizar por WiFi.
+- **Pantalla por secciones con color y tema oscuro** (2.4) — opciones agrupadas en Navegación, Llamadas y avisos, Seguridad, La placa, Apariencia y Conexión; el tema sigue al teléfono o se fija en claro u oscuro (fondo negro, ahorra batería en pantallas OLED).
 - **Detección de caídas** — hasta 3 contactos de emergencia; si la placa detecta una caída y nadie toca «Estoy bien», el celular les envía un SMS con tu ubicación (y opcionalmente llama al primero). Solo vigila con la moto en marcha: la app le envía a la placa la velocidad del GPS y una caída cuenta solo si venía a más de 20 km/h, así que sacar la placa del anclaje estacionado no la dispara. Incluye un botón de prueba.
 
 ## Requisitos
