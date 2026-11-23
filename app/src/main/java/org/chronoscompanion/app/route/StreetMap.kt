@@ -93,6 +93,10 @@ class StreetMap(val originLat: Double, val originLon: Double) {
     @Synchronized
     fun size(): Int = streets.size
 
+    /** Every piece - for drawing a whole trip (TripImage). */
+    @Synchronized
+    fun all(): List<Street> = streets.values.toList()
+
     /** Pieces whose bounding circle comes within [radiusM] of (x, y) and are not in
      * [exclude], nearest first. */
     @Synchronized
@@ -268,15 +272,17 @@ object StreetTiles {
 
     /**
      * Puts the tiles around [path] into [map]: cached ones at once, then fetches what is
-     * missing or old and adds that too.
+     * missing or old and adds that too. [fetchMissing] false = the cache only (the answer
+     * is then OK whether or not tiles are missing; see [missing]).
      */
-    fun ensure(ctx: Context, path: List<Pair<Double, Double>>, radiusM: Double, map: StreetMap): Outcome {
+    fun ensure(ctx: Context, path: List<Pair<Double, Double>>, radiusM: Double, map: StreetMap,
+               fetchMissing: Boolean = true): Outcome {
         val keys = tilesAround(path, radiusM)
         val toFetch = ArrayList<Key>()
         var pending = false
         for (k in keys) {
             if (!map.hasTile(k.name)) read(ctx, k)?.let { map.addTile(k.name, it) }
-            if (needsFetch(ctx, k)) {
+            if (fetchMissing && needsFetch(ctx, k)) {
                 if (synchronized(inFlight) { k.name in inFlight }) pending = true else toFetch.add(k)
             }
         }
@@ -289,6 +295,10 @@ object StreetTiles {
             Outcome.FAILED
         }
     }
+
+    /** Tiles around [path] that are not in the cache at all (old ones still count as there). */
+    fun missing(ctx: Context, path: List<Pair<Double, Double>>, radiusM: Double): List<Key> =
+        tilesAround(path, radiusM).filter { !file(ctx, it).exists() }
 
     /** Downloads [keys] in batches, saving each tile; [onTile] gets every saved tile.
      * [onBatch] reports progress (tiles done). Throws on the first failed batch. */

@@ -218,6 +218,32 @@ En la sección **Apariencia**, **Tema de la app** elige entre **Igual que el tel
 
 ## 9. Otras funciones
 
+### Último viaje
+
+<img src="docs/images/app-ultimo-viaje.png" alt="Imagen del último viaje: recorrido sobre las calles, distancia, tiempo y velocidades" width="320">
+
+Al terminar cada navegación (modo ruta, Google Maps o CoMaps), la app guarda una imagen del viaje con:
+
+- el recorrido que hiciste sobre las calles de la zona, con el inicio (punto verde) y la llegada (bandera);
+- la distancia;
+- el tiempo en movimiento, sin contar los ratos detenido;
+- la velocidad media y la máxima.
+
+**Dónde verla**: en la app, **Último viaje** de la sección **Navegación**. Debajo de la imagen están los 10 últimos viajes; toca uno para verlo.
+
+**Qué puedes hacer con la imagen**:
+
+- **Compartir** la envía por WhatsApp u otra app.
+- **Guardar en galería** la deja en **Imágenes › Navi Moto**.
+- **Borrar este viaje** la elimina de la app. Las copias que ya guardaste o compartiste no se borran.
+
+**Detalles**:
+
+- No se guardan los viajes de menos de 300 m o de menos de 1 minuto en movimiento, ni la ruta de prueba.
+- En el modo Google Maps la app descarga al final las calles que le faltan, si hay internet. Sin internet, la imagen muestra solo las calles que ya estaban guardadas en el celular.
+- La distancia puede diferir un poco del último viaje que muestra la esfera de la placa. La app la mide con el GPS del celular; la placa la calcula con la distancia que faltaba al destino.
+- La imagen muestra por dónde anduviste, incluido el punto de partida. Queda solo en el celular hasta que tú la compartas o la guardes en la galería.
+
 ### Detección de caídas
 
 <img src="docs/images/app-caidas.png" alt="Detección de caídas en la app" width="220"> <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/aviso-caida.png" alt="Cuenta regresiva de posible caída" width="220">

@@ -168,6 +168,33 @@
 
                 <View style="@style/NaviRowDivider" />
 
+                <!-- Picture of the last ride (track, distance, time); history of 10. -->
+                <LinearLayout
+                    android:id="@+id/tripButton"
+                    style="@style/NaviRow.Action">
+
+                    <ImageView
+                        style="@style/NaviRowIcon"
+                        android:backgroundTint="@color/cat_navigation"
+                        android:src="@drawable/ic_row_trip" />
+
+                    <LinearLayout style="@style/NaviRowText">
+
+                        <TextView
+                            style="@style/NaviRowTitle"
+                            android:text="@string/trip_title" />
+
+                        <TextView
+                            android:id="@+id/tripSubtitle"
+                            style="@style/NaviRowSubtitle"
+                            android:text="@string/trip_none_short" />
+                    </LinearLayout>
+
+                    <ImageView style="@style/NaviRowChevron" />
+                </LinearLayout>
+
+                <View style="@style/NaviRowDivider" />
+
                 <!-- CoMaps mode: CoMaps' own navigation shown on the watch as route mode. -->
                 <LinearLayout style="@style/NaviRow">
 

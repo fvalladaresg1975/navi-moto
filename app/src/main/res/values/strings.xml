@@ -208,4 +208,21 @@
     <string name="sub_firmware">Actualiza la placa por WiFi, sin cable</string>
     <string name="sub_change_device">Elegir otra placa cercana</string>
     <string name="sub_forget_device">Desvincular la placa guardada</string>
+
+    <!-- Last ride picture (app 2.6) -->
+    <string name="trip_title">Último viaje</string>
+    <string name="trip_none_short">Imagen del recorrido al terminar de navegar</string>
+    <string name="trip_none_long">Aún no hay viajes guardados.\n\nAl terminar una navegación (ruta propia, CoMaps o Google Maps) aquí aparece la imagen del recorrido, con la distancia y el tiempo. La ruta de prueba no se guarda.\n\nLas imágenes quedan solo en este celular hasta que tú las compartas o guardes en la galería.</string>
+    <string name="trip_drawing">Dibujando la imagen…</string>
+    <string name="trip_share">Compartir</string>
+    <string name="trip_save">Guardar en galería</string>
+    <string name="trip_saved">Imagen guardada en Imágenes › Navi Moto</string>
+    <string name="trip_save_failed">No se pudo guardar la imagen</string>
+    <string name="trip_already_saved">Este viaje ya está en Imágenes › Navi Moto</string>
+    <string name="trip_history">Viajes anteriores (los últimos %d)</string>
+    <string name="trip_delete">Borrar este viaje</string>
+    <string name="trip_delete_title">¿Borrar este viaje?</string>
+    <string name="trip_delete_msg">Se borra la imagen y el recorrido de este viaje del celular. Las copias que ya guardaste en la galería o compartiste no se tocan.</string>
+    <string name="trip_delete_yes">Borrar</string>
+    <string name="trip_share_chooser">Compartir viaje</string>
 </resources>

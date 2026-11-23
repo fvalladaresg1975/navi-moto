@@ -1835,10 +1835,14 @@ class ChronosBleService : Service() {
         }
     }
 
+    /** The ride's track and figures, for the «Último viaje» picture (not the demo). */
+    private val tripRecorder by lazy { org.chronoscompanion.app.trip.TripRecorder(this) }
+
     private val routeLocationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             val r = activeRoute ?: return
             val t = tracker ?: return
+            tripRecorder.onFix(location)
             t.update(location)
             routeS = t.s
             val now = SystemClock.elapsedRealtime()
@@ -2000,6 +2004,7 @@ class ChronosBleService : Service() {
         try {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, mapsSpeedListener, Looper.getMainLooper())
             mapsSpeedActive = true
+            tripRecorder.start("maps", null)
             Log.i(TAG, "Maps speedometer started")
         } catch (e: Exception) {
             // Typically: the service was restarted in the background and couldn't take the
@@ -2048,6 +2053,7 @@ class ChronosBleService : Service() {
         mapsSpeedActive = false
         val lm = getSystemService(LOCATION_SERVICE) as LocationManager
         runCatching { lm.removeUpdates(mapsSpeedListener) }
+        tripRecorder.finish()
         mapsFixes.clear()
         mapsLimitKmh = null
         if (sendHide && status == Status.CONNECTED) {
@@ -2061,6 +2067,7 @@ class ChronosBleService : Service() {
         if (!mapsSpeedActive) return
         mapsSpeedMps = if (fix.hasSpeed()) fix.speed.toDouble() else null
         mapsSpeedAtMs = SystemClock.elapsedRealtime()
+        tripRecorder.onFix(fix)
         mapsFixes.addLast(fix)
         while (mapsFixes.size > 10 || (fix.time - mapsFixes.first.time) > 60000) mapsFixes.removeFirst()
         maybeLookupMapsLimit(fix)
@@ -2362,6 +2369,7 @@ class ChronosBleService : Service() {
             voice = RouteVoice(this).also { it.announceStart(route) }
             setForegroundTypes(withLocation = true)
         }
+        tripRecorder.start(if (fromCoMaps) "comaps" else "route", destination?.name?.takeIf { it.isNotBlank() })
         startRouteTracking()
         mainHandler.post(routeRunnable)
         widgetRemainingM = route.distanceM
@@ -2385,6 +2393,7 @@ class ChronosBleService : Service() {
         turnBeeper.reset()
         mainHandler.removeCallbacks(routeRunnable)
         stopRouteTracking()
+        tripRecorder.finish()
         voice?.shutdown()
         voice = null
         // The route clear below makes the watch drop its streets too.

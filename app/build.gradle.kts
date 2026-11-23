@@ -23,8 +23,8 @@ android {
         applicationId = "org.chronoscompanion.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 17
-        versionName = "2.5"
+        versionCode = 18
+        versionName = "2.6"
     }
 
     signingConfigs {

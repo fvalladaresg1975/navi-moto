@@ -108,6 +108,21 @@
             android:name=".crash.CrashSettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".trip.TripsActivity"
+            android:exported="false" />
+
+        <!-- Compartir a ride's picture: only files/trips/ is reachable through it. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.trips"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/trip_files" />
+        </provider>
+
         <!-- Route mode entry point: a destination shared from CoMaps, Google Maps, etc.
              Shows progress and the route summary, then hands the route to the BLE service. -->
         <activity

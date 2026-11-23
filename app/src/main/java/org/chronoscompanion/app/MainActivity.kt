@@ -169,6 +169,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.firmwareButton).setOnClickListener {
             startActivity(Intent(this, org.chronoscompanion.app.ota.FirmwareUpdateActivity::class.java))
         }
+        tripSubtitle = findViewById(R.id.tripSubtitle)
+        findViewById<View>(R.id.tripButton).setOnClickListener {
+            startActivity(Intent(this, org.chronoscompanion.app.trip.TripsActivity::class.java))
+        }
+        ContextCompat.registerReceiver(this, tripsReceiver,
+            IntentFilter(org.chronoscompanion.app.trip.TripStore.ACTION_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+        org.chronoscompanion.app.trip.TripRecorder.importLastTraceOnce(applicationContext)
         routeDemoTitle = findViewById(R.id.routeDemoTitle)
         routeDemoSubtitle = findViewById(R.id.routeDemoSubtitle)
         findViewById<View>(R.id.routeDemoButton).setOnClickListener {
@@ -261,6 +268,25 @@ class MainActivity : AppCompatActivity() {
         routeDemoSubtitle.setText(sub)
     }
 
+    // --- Last ride (TripRecorder saves it when a navigation ends) ----------------------
+    private lateinit var tripSubtitle: TextView
+    private val tripsReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = showLastTrip()
+    }
+
+    private fun showLastTrip() {
+        val t = org.chronoscompanion.app.trip.TripStore.latest(this)
+        if (t == null) {
+            tripSubtitle.setText(R.string.trip_none_short)
+            return
+        }
+        val img = org.chronoscompanion.app.trip.TripImage
+        val (dv, du) = img.durationParts(t.movingS)
+        val day = java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale("es", "CL"))
+            .format(java.util.Date(t.startMs))
+        tripSubtitle.text = "${img.km(t.distanceM)} km · $dv $du · $day"
+    }
+
     // --- Street cache (filled by each route's download, see StreetPrefetch) ----------
     private lateinit var streetCacheText: TextView
 
@@ -291,6 +317,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshRouteButton()
         showStreetCache()
+        showLastTrip()
         // Started at boot the service could only be "connected device" (Android grants the
         // location type only with the app on screen). Now that it is, promote it again so
         // GPS keeps working with the screen off. Re-entering onStartCommand is harmless.
@@ -340,6 +367,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         unregisterReceiver(statusReceiver)
+        runCatching { unregisterReceiver(tripsReceiver) }
         ChronosBleService.discoveryCallback = null
         super.onDestroy()
     }
