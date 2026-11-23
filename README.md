@@ -22,11 +22,12 @@ Empezó como una alternativa abierta a la app oficial de Chronos para relojes co
 - **Navegación de Google Maps** — reenvía las indicaciones y la flecha de Maps, con velocidad y límite.
 - **Navegación de CoMaps** (2.3) — con «Seguir la navegación de CoMaps» activado, al iniciar una navegación en [CoMaps](https://comaps.app) la placa la muestra como el modo ruta: el camino que calculó CoMaps con las calles alrededor, flecha, distancia e indicación del próximo giro, velocidad y límite. Lo lee del [proveedor de navegación](https://codeberg.org/comaps/comaps/wiki/Content-Provider) que CoMaps publica para otras apps (con su permiso); toma los recálculos de CoMaps, la voz la da CoMaps y se cierra al detenerla en CoMaps.
 - **Notificaciones, llamadas y contactos** — WhatsApp, SMS, etc.; contestar/rechazar y llamar desde la placa.
-- **Música, clima (Open-Meteo) y hora**; el clima incluye probabilidad de lluvia por hora y atardecer para las esferas de la placa.
+- **Música, clima (Open-Meteo, con MET Norway de respaldo) y hora**; el clima incluye probabilidad de lluvia por hora y atardecer para las esferas de la placa.
 - **Batería del teléfono** en el panel de control de la placa.
 - **Widget** de pantalla de inicio: estado, conectar, detener ruta, pitido, calles y brillo de la pantalla de la placa.
 - **Esfera con foto** — eliges una foto, la ajustas en el círculo (arrastrar / pellizcar), eliges dónde va la hora y la envías a la esfera «Foto» de la placa, que la guarda.
 - **Actualizar firmware del navegador** — eliges el `firmware.bin` y la app se lo envía a la placa por la red WiFi propia de la placa (sin cable USB). Solo acepta firmwares que también se pueden actualizar por WiFi.
+- **Reconexión automática** (2.5) — tras reiniciar el teléfono o actualizar la app vuelve a conectarse sola, salvo que se haya tocado «Detener».
 - **Pantalla por secciones con color y tema oscuro** (2.4) — opciones agrupadas en Navegación, Llamadas y avisos, Seguridad, La placa, Apariencia y Conexión; el tema sigue al teléfono o se fija en claro u oscuro (fondo negro, ahorra batería en pantallas OLED).
 - **Detección de caídas** — hasta 3 contactos de emergencia; si la placa detecta una caída y nadie toca «Estoy bien», el celular les envía un SMS con tu ubicación (y opcionalmente llama al primero). Solo vigila con la moto en marcha: la app le envía a la placa la velocidad del GPS y una caída cuenta solo si venía a más de 20 km/h, así que sacar la placa del anclaje estacionado no la dispara. Incluye un botón de prueba.
 
@@ -57,7 +58,7 @@ El APK queda en `app/build/outputs/apk/debug/`. La versión release (`assembleRe
 
 ## Privacidad
 
-No hay cuentas ni servidores propios. Salen del teléfono solo estas consultas: coordenadas de origen/destino a Valhalla (u OSRM) para la ruta y los límites; la zona de la ruta a Overpass para las calles; el nombre del destino a Nominatim cuando viene de Google Maps sin coordenadas; las coordenadas a Open-Meteo para el clima. Todos son servicios públicos de OpenStreetMap/Open-Meteo.
+No hay cuentas ni servidores propios. Salen del teléfono solo estas consultas: coordenadas de origen/destino a Valhalla (u OSRM) para la ruta y los límites; la zona de la ruta a Overpass para las calles; el nombre del destino a Nominatim cuando viene de Google Maps sin coordenadas; las coordenadas a Open-Meteo para el clima (y, solo si Open-Meteo falla, a MET Norway, que pide identificar la app en el User-Agent). Todos son servicios públicos de OpenStreetMap, Open-Meteo y el instituto meteorológico noruego.
 
 ## Licencia
 

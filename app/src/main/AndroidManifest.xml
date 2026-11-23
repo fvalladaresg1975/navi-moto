@@ -17,6 +17,8 @@
          be a location-type foreground service for that (promoted only while a route runs). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Reconnect to the watch after the phone restarts (only if it was connected). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Incoming-call feature: detect ringing calls, look up the caller's name, and let
          the watch's Accept/Reject buttons actually answer/decline the call.
@@ -134,6 +136,16 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Restarts the connection after a phone restart or an app update, if it was on. -->
+        <receiver
+            android:name=".ble.ServiceAutoStart$Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Home-screen widget: status, Conectar / Detener ruta, beep and street switches. -->
         <receiver

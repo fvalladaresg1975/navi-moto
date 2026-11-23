@@ -93,6 +93,8 @@ class ChronosBleService : Service() {
         private const val NOTIF_ID = 1
         private const val TIME_SYNC_INTERVAL_MS = 10 * 60 * 1000L // re-sync every 10 min to correct drift
         private const val WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000L // Open-Meteo updates hourly at most
+        /** After a failed weather fetch (no location, or both sources down), try again this soon. */
+        private const val WEATHER_RETRY_MS = 10 * 60 * 1000L
         private const val DISCOVERY_DURATION_MS = 8000L
         private const val MUSIC_STATE_POLL_MS = 5000L
 
@@ -261,6 +263,8 @@ class ChronosBleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             Log.i(TAG, "Stop requested from notification action")
+            // Stopped on purpose: don't bring it back after the next phone restart.
+            ServiceAutoStart.setWanted(this, false)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -268,6 +272,7 @@ class ChronosBleService : Service() {
             crashResponder.cancelFromPhone()
             return START_STICKY
         }
+        ServiceAutoStart.setWanted(this, true)
         startForeground()
         // The service is a singleton within the process: once running, every extra
         // startForegroundService() call (each tap of "Conectar", or the system
@@ -319,7 +324,10 @@ class ChronosBleService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun broadcastStatus() {
-        val i = Intent(ACTION_STATUS_CHANGED)
+        // Explicit package: MainActivity registers its receiver RECEIVER_NOT_EXPORTED, and
+        // Android 14 doesn't deliver an implicit broadcast to it - the header stayed on
+        // "Iniciando…" until the app was reopened.
+        val i = Intent(ACTION_STATUS_CHANGED).setPackage(packageName)
         i.putExtra(EXTRA_STATUS, status.name)
         i.putExtra(EXTRA_DEVICE_NAME, prefs().getString(PREF_DEVICE_NAME, null))
         sendBroadcast(i)
@@ -2488,11 +2496,13 @@ class ChronosBleService : Service() {
             val location = WeatherFetcher.resolveLocation(this)
             if (location == null) {
                 Log.w(TAG, "sendWeather: could not determine a location")
+                mainHandler.post { scheduleWeatherRetry() }
                 return@Thread
             }
             val result = WeatherFetcher.fetch(this, location)
             if (result == null) {
                 Log.w(TAG, "sendWeather: fetch failed")
+                mainHandler.post { scheduleWeatherRetry() }
                 return@Thread
             }
             mainHandler.post {
@@ -2554,6 +2564,14 @@ class ChronosBleService : Service() {
             else -> WEATHER_REFRESH_INTERVAL_MS - elapsed
         }
         mainHandler.postDelayed(weatherRunnable, delay)
+    }
+
+    /** A failed fetch tries again in 10 minutes instead of waiting the full 30. Main thread. */
+    private fun scheduleWeatherRetry() {
+        if (status != Status.CONNECTED) return
+        Log.i(TAG, "Weather retry in ${WEATHER_RETRY_MS / 60000} min")
+        mainHandler.removeCallbacks(weatherRunnable)
+        mainHandler.postDelayed(weatherRunnable, WEATHER_RETRY_MS)
     }
 
     private fun stopWeatherTimer() {

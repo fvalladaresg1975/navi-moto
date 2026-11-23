@@ -19,7 +19,7 @@ La placa sola no navega: siempre necesita la app conectada.
 1. Enciende la placa con el botón **PWR**.
 2. Abre la app y toca **1. Habilitar acceso a notificaciones**. Activa *Navi Moto* en la lista y vuelve a la app. Sin este paso no funcionan las notificaciones ni los modos Google Maps y CoMaps.
 3. Toca **2. Conectar con el navegador** y acepta los permisos que pida (Bluetooth, ubicación y, si quieres, llamadas y contactos).
-4. Cuando la cabecera de colores diga **Conectado** (con el punto verde), ya está. Desde ahí la app se reconecta sola.
+4. Cuando la cabecera de colores diga **Conectado** (con el punto verde), ya está. Desde ahí la app se reconecta sola, también después de reiniciar el celular o de actualizar la app. Si tocas **Detener** en la notificación fija de la app, queda detenida hasta que vuelvas a tocar el botón 2.
 
 Debajo de los botones 1 y 2, las opciones están agrupadas por sección, cada una con su color: **Navegación**, **Llamadas y avisos**, **Seguridad**, **La placa**, **Apariencia** y **Conexión**. Si tienes más de una placa, usa **Cambiar de navegador** en la sección Conexión.
 
@@ -174,7 +174,7 @@ Desliza hacia arriba (o toca la flecha de abajo) para volver. Durante la navegac
 
 <img src="https://raw.githubusercontent.com/fvalladaresg1975/navi-moto-firmware/main/docs/images/placa-clima.png" alt="Pantalla del clima" width="220">
 
-El clima de tu ubicación: ícono, temperatura y la hora en que la app lo actualizó. La app lo envía al conectarse y cada 30 minutos.
+El clima de tu ubicación: ícono, temperatura y la hora en que la app lo actualizó. La app lo envía al conectarse y cada 30 minutos. Lo pide a [Open-Meteo](https://open-meteo.com); si no responde, lo pide al servicio meteorológico noruego ([MET Norway](https://api.met.no)) y, si ninguno responde, vuelve a intentarlo a los 10 minutos.
 
 ## 8. Ajustes de la app
 
@@ -255,3 +255,5 @@ En la sección **Apariencia**, **Tema de la app** elige entre **Igual que el tel
 | Con CoMaps la placa no muestra nada | Revisa que **Seguir la navegación de CoMaps** esté activado en la app, el acceso a notificaciones (botón 1) y que CoMaps esté actualizado. |
 | «No se pudo salir de la navegación» | No hay una navegación activa en Google Maps; si estabas en modo ruta, deténla desde la app. |
 | La app dice **Detenido** o la placa no se conecta | Revisa que la placa esté encendida y el Bluetooth activado, y toca **2. Conectar con el navegador**. |
+| La app se queda en «Buscando el navegador…» aunque la placa está encendida y cerca | La placa puede haber quedado trabada en el Bluetooth: apágala y enciéndela con **PWR**. La app se conecta sola en unos segundos. |
+| La pantalla Clima de la placa no se actualiza | Revisa que la app diga **Conectado**: sin conexión la placa no recibe el clima (ni la hora ni las notificaciones). |

@@ -11,7 +11,11 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import kotlin.math.acos
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.tan
 
 /**
  * Fetches current weather + a 7-day forecast from Open-Meteo (free, no API key) for the
@@ -200,8 +204,19 @@ object WeatherFetcher {
         else -> 4
     }
 
-    /** Runs a blocking network call - callers must invoke this off the main thread. */
+    /**
+     * Runs blocking network calls - callers must invoke this off the main thread.
+     * Open-Meteo first; if it fails (down, timeout, bad answer), MET Norway as a backup.
+     */
     fun fetch(context: Context, location: Location): Result? {
+        fetchOpenMeteo(context, location)?.let { return it }
+        Log.w(TAG, "Open-Meteo failed, trying MET Norway")
+        return fetchMetNo(context, location)?.also {
+            Log.i(TAG, "Weather from MET Norway (backup)")
+        }
+    }
+
+    private fun fetchOpenMeteo(context: Context, location: Location): Result? {
         return try {
             val url = URL(
                 "https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}" +
@@ -285,5 +300,157 @@ object WeatherFetcher {
             Log.e(TAG, "Weather fetch failed: ${e.message}")
             null
         }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Backup source: MET Norway (api.met.no), free and keyless, worldwide. Its terms ask
+    // every client to identify itself in the User-Agent with a way to reach the author.
+    // ---------------------------------------------------------------------------------
+
+    private const val MET_USER_AGENT = "NaviMoto/2.5 (+https://github.com/fvalladaresg1975/navi-moto)"
+
+    /** MET Norway symbol_code (e.g. "lightrainshowers_day") -> firmware icon 0-7. */
+    private fun iconForMetSymbol(symbol: String?): Int {
+        val s = symbol?.substringBefore('_') ?: return 4
+        return when {
+            "thunder" in s -> 5
+            "snow" in s || "sleet" in s -> 2
+            "showers" in s || s == "lightrain" -> 7
+            "rain" in s -> 3
+            s == "fog" -> 6
+            s == "clearsky" || s == "fair" -> 1
+            s == "partlycloudy" -> 0
+            else -> 4
+        }
+    }
+
+    private fun org.json.JSONObject.symbol(): String? =
+        (optJSONObject("next_1_hours") ?: optJSONObject("next_6_hours") ?: optJSONObject("next_12_hours"))
+            ?.optJSONObject("summary")?.optString("symbol_code")
+
+    /**
+     * Chance of rain for one hour. MET gives probability_of_precipitation only in some
+     * regions (not Chile); elsewhere it is estimated from the expected millimetres so the
+     * "Clima de ruta" face still shows when rain is coming.
+     */
+    private fun rainChance(next1h: org.json.JSONObject?): Int {
+        val d = next1h?.optJSONObject("details") ?: return -1
+        if (d.has("probability_of_precipitation")) return d.getDouble("probability_of_precipitation").roundToInt()
+        if (!d.has("precipitation_amount")) return -1
+        val mm = d.getDouble("precipitation_amount")
+        return when {
+            mm < 0.1 -> 0
+            mm < 0.5 -> 40
+            mm < 2.0 -> 70
+            else -> 90
+        }
+    }
+
+    private fun fetchMetNo(context: Context, location: Location): Result? {
+        return try {
+            // MET asks for at most 4 decimals (better caching on their side).
+            val url = URL(String.format(Locale.US,
+                "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=%.4f&lon=%.4f",
+                location.latitude, location.longitude))
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 10000
+            conn.readTimeout = 15000
+            conn.setRequestProperty("User-Agent", MET_USER_AGENT)
+            if (conn.responseCode != 200) {
+                Log.e(TAG, "MET Norway answered HTTP ${conn.responseCode}")
+                conn.disconnect()
+                return null
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+
+            val series = JSONObject(body).getJSONObject("properties").getJSONArray("timeseries")
+            if (series.length() == 0) return null
+            val zone = java.time.ZoneId.systemDefault()
+            data class Step(val at: java.time.ZonedDateTime, val data: JSONObject) {
+                val details: JSONObject get() = data.getJSONObject("instant").getJSONObject("details")
+            }
+            val steps = (0 until series.length()).map { i ->
+                val o = series.getJSONObject(i)
+                Step(java.time.Instant.parse(o.getString("time")).atZone(zone), o.getJSONObject("data"))
+            }
+
+            val now = steps.first()
+            val currentTemp = now.details.getDouble("air_temperature").roundToInt()
+            val currentIcon = iconForMetSymbol(now.data.symbol())
+            val pressure = now.details.optDouble("air_pressure_at_sea_level", 1013.0).roundToInt()
+
+            // Next 24 hours (the first ~2.5 days come hour by hour).
+            val next24 = steps.take(24).filter { it.data.has("next_1_hours") }
+            val hourly = next24.map {
+                ChronosProtocol.HourlyData(
+                    hour = it.at.hour,
+                    icon = iconForMetSymbol(it.data.symbol()),
+                    temp = it.details.getDouble("air_temperature").roundToInt(),
+                    windKmh = (it.details.optDouble("wind_speed", 0.0) * 3.6).roundToInt(),
+                    humidity = it.details.optDouble("relative_humidity", 0.0).roundToInt(),
+                    uv = it.details.optDouble("ultraviolet_index_clear_sky", 0.0).roundToInt(),
+                )
+            }
+            val rainByHour = IntArray(24) { -1 }
+            next24.forEach { rainByHour[it.at.hour] = rainChance(it.data.optJSONObject("next_1_hours")) }
+
+            // Days: highs/lows from every step of that local date, plus the 6-hour max/min.
+            val byDate = steps.groupBy { it.at.toLocalDate() }
+            val today = now.at.toLocalDate()
+            val days = (0 until 7).mapNotNull { d ->
+                val date = today.plusDays(d.toLong())
+                val list = byDate[date] ?: return@mapNotNull null
+                val temps = list.flatMap { s ->
+                    val six = s.data.optJSONObject("next_6_hours")?.optJSONObject("details")
+                    listOfNotNull(
+                        s.details.optDouble("air_temperature").takeIf { !it.isNaN() },
+                        six?.optDouble("air_temperature_max")?.takeIf { !it.isNaN() },
+                        six?.optDouble("air_temperature_min")?.takeIf { !it.isNaN() },
+                    )
+                }
+                if (temps.isEmpty()) return@mapNotNull null
+                val high = temps.max().roundToInt()
+                val low = temps.min().roundToInt()
+                if (d == 0) {
+                    ChronosProtocol.WeatherDay(icon = currentIcon, temp = currentTemp,
+                        high = maxOf(high, currentTemp), low = minOf(low, currentTemp))
+                } else {
+                    val noon = list.minBy { kotlin.math.abs(it.at.hour - 12) }
+                    ChronosProtocol.WeatherDay(icon = iconForMetSymbol(noon.data.symbol()),
+                        temp = (high + low) / 2, high = high, low = low)
+                }
+            }
+            if (days.isEmpty()) return null
+            val uvToday = (byDate[today] ?: listOf(now))
+                .maxOf { it.details.optDouble("ultraviolet_index_clear_sky", 0.0) }.roundToInt()
+
+            val (sunrise, sunset) = sunTimes(location.latitude, location.longitude, today, zone)
+            Result(city = cityName(context, location), days = days, uvIndex = uvToday, pressureHpa = pressure,
+                hourly = hourly, rainByHour = rainByHour, sunriseMin = sunrise, sunsetMin = sunset)
+        } catch (e: Exception) {
+            Log.e(TAG, "MET Norway fetch failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Sunrise and sunset in local minutes after midnight (NOAA approximation, about a
+     * minute off), so the backup needs no second request. -1 when the sun doesn't rise
+     * or set that day.
+     */
+    private fun sunTimes(lat: Double, lon: Double, date: java.time.LocalDate, zone: java.time.ZoneId): Pair<Int, Int> {
+        val g = 2 * Math.PI / 365.0 * (date.dayOfYear - 1)
+        val eqTime = 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) -
+            0.014615 * cos(2 * g) - 0.040849 * sin(2 * g))
+        val decl = 0.006918 - 0.399912 * cos(g) + 0.070257 * sin(g) - 0.006758 * cos(2 * g) +
+            0.000907 * sin(2 * g) - 0.002697 * cos(3 * g) + 0.00148 * sin(3 * g)
+        val latR = Math.toRadians(lat)
+        val arg = cos(Math.toRadians(90.833)) / (cos(latR) * cos(decl)) - tan(latR) * tan(decl)
+        if (arg < -1 || arg > 1) return -1 to -1
+        val ha = Math.toDegrees(acos(arg))
+        val offsetMin = zone.rules.getOffset(date.atTime(12, 0)).totalSeconds / 60
+        fun local(utcMin: Double) = (((utcMin + offsetMin).roundToInt() % 1440) + 1440) % 1440
+        return local(720 - 4 * (lon + ha) - eqTime) to local(720 - 4 * (lon - ha) - eqTime)
     }
 }

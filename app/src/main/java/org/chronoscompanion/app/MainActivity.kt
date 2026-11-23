@@ -291,6 +291,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshRouteButton()
         showStreetCache()
+        // Started at boot the service could only be "connected device" (Android grants the
+        // location type only with the app on screen). Now that it is, promote it again so
+        // GPS keeps working with the screen off. Re-entering onStartCommand is harmless.
+        if (ChronosBleService.instance != null &&
+            org.chronoscompanion.app.ble.ServiceAutoStart.isWanted(this)
+        ) {
+            ContextCompat.startForegroundService(this, Intent(this, ChronosBleService::class.java))
+        }
         // The widget can flip these while the app is in the background.
         turnBeepSwitch.isChecked = org.chronoscompanion.app.route.TurnBeepPrefs.isEnabled(this)
         streetMapSwitch.isChecked = org.chronoscompanion.app.route.StreetMapPrefs.isEnabled(this)
@@ -414,6 +422,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startBleService() {
+        // Remembered so the connection comes back by itself after a phone restart.
+        org.chronoscompanion.app.ble.ServiceAutoStart.setWanted(this, true)
         val intent = Intent(this, ChronosBleService::class.java)
         ContextCompat.startForegroundService(this, intent)
         statusText.text = getString(R.string.status_starting)
